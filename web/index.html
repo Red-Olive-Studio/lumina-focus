@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Lumina</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body data-phase="focus">
+<header class="bar">
+  <span class="brand"><span class="dot"></span>lumina</span>
+  <button id="openSettings" class="icon" title="Settings" aria-label="Settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+  </button>
+  <button id="toMini" class="icon desk" title="Shrink to corner" aria-label="Shrink to corner">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 12h12"/></svg>
+  </button>
+  <button id="quit" class="icon desk" title="Quit" aria-label="Quit">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
+  </button>
+</header>
+
+<main id="home">
+  <section class="timer">
+    <p id="head" class="eyebrow">Focus</p>
+    <div id="time" class="time">25:00</div>
+    <div class="controls">
+      <button id="toggle" class="go big" aria-label="Start or pause">
+        <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+      </button>
+      <button id="brk" class="soft">Take a break</button>
+    </div>
+    <p id="focused" class="muted"></p>
+  </section>
+
+  <section id="today">
+    <p class="next"><span class="eyebrow">Up next</span><b id="next"></b></p>
+    <div id="lineBox">
+      <div class="line" id="line"><div class="pts"></div></div>
+      <div class="ends"><span>Now</span><span id="bedL"></span></div>
+    </div>
+    <div id="timerOut" class="chip" hidden>
+      <span id="timerLeft"></span>
+      <button id="timerCancel" class="icon" title="Cancel timer" aria-label="Cancel timer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <section>
+    <form id="add" class="add">
+      <input id="addText" autocomplete="off" placeholder="Add a task, event or timer" aria-label="Add a task, event or timer" aria-describedby="hint">
+      <button class="icon" aria-label="Add">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </form>
+    <p id="hint" class="hint">Try “14:30 Call mom”, “tomorrow 9am Dentist”, “Vitamins 9am daily” or “20m Tea”.</p>
+    <div id="lists"></div>
+  </section>
+</main>
+
+<main id="settings" hidden>
+  <h2>Focus rhythm <small>minutes</small></h2>
+  <div class="grid">
+    <label>Focus <input type="number" min="1" data-s="focus"></label>
+    <label>Break <input type="number" min="1" data-s="short"></label>
+    <label>Long break <input type="number" min="1" data-s="long"></label>
+    <label>Rounds <input type="number" min="1" data-s="rounds"></label>
+    <label class="chk"><input type="checkbox" data-s="autoNext"> Start next round on its own</label>
+  </div>
+
+  <h2>Alerts</h2>
+  <div class="grid">
+    <label>Show <select data-s="alert"><option value="popup">Pop-up + sound</option><option value="sound">Sound only</option></select></label>
+    <label class="chk"><input type="checkbox" data-s="sound"> Sounds <button id="testAlert" type="button" class="soft small">Test</button></label>
+  </div>
+
+  <h2>My day</h2>
+  <div class="grid">
+    <label>Wake up <input type="time" data-s="wake"></label>
+    <label>Bedtime <input type="time" data-s="bed"></label>
+  </div>
+
+  <h2>Break reminders <small>while you're at the screen</small></h2>
+  <ul id="rems" class="list"></ul>
+  <form id="addRem" class="add">
+    <input name="text" placeholder="New reminder" required aria-label="Reminder text">
+    <input type="number" name="every" min="1" value="60" required aria-label="Every N minutes" title="Every N minutes">
+    <button class="icon" aria-label="Add reminder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </form>
+
+  <h2>Evening</h2>
+  <div class="grid">
+    <label class="chk"><input type="checkbox" data-g="screen"> Screen-time nudge after</label>
+    <label><span></span><input type="number" min="15" data-g="screenLimit" aria-label="Minutes"></label>
+    <label class="chk"><input type="checkbox" data-g="night"> Warm night light from</label>
+    <label><span></span><input type="time" data-g="nightAt" aria-label="Night light time"></label>
+    <label class="chk desk"><input type="checkbox" data-g="shutdown"> Shut down PC at</label>
+    <label class="desk"><span></span><input type="time" data-g="shutdownAt" aria-label="Shutdown time"></label>
+    <label class="chk"><input type="checkbox" data-g="sleep"> Nudge me after bedtime</label>
+    <label class="chk desk"><input type="checkbox" data-s="login"> Start with Windows</label>
+  </div>
+
+  <button id="closeSettings" class="primary">Done</button>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden>
+  <span id="toastText"></span><span id="toastActs"></span>
+  <button id="toastOk" title="Dismiss" aria-label="Dismiss">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
+  </button>
+</div>
+</body>
+</html>

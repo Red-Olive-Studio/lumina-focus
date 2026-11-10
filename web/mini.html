@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Lumina mini</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="mini.js"></script>
+</head>
+<body class="pip" data-phase="focus">
+<div class="pill">
+  <div class="prow" id="normal">
+    <span class="dot"></span>
+    <b id="time">25:00</b>
+    <span id="next" class="pnext"></span>
+    <button id="toggle" class="icon go" aria-label="Start or pause">
+      <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+    </button>
+    <button id="open" class="icon" title="Open Lumina" aria-label="Open Lumina">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg>
+    </button>
+  </div>
+  <div class="prow palert" id="alert" role="alert" hidden>
+    <b id="atext"></b>
+    <span id="acts"></span>
+    <button id="ok" class="icon" title="Dismiss" aria-label="Dismiss">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
+    </button>
+  </div>
+</div>
+</body>
+</html>
