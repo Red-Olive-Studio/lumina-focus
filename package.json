@@ -1,7 +1,7 @@
 {
   "name": "lumina",
   "productName": "Lumina",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "A calm little side app: focus timer, what's now and next, your habits and gentle break reminders.",
   "main": "main.js",
@@ -9,15 +9,26 @@
     "start": "electron .",
     "web": "npx --yes serve web",
     "test": "node --test test/logic.test.mjs",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win portable",
+    "test-mode": "electron . --test"
   },
   "build": {
     "appId": "studio.redolive.lumina",
     "productName": "Lumina",
-    "files": ["main.js", "preload.js", "web/**"],
-    "directories": { "output": "dist" },
-    "win": { "signAndEditExecutable": false },
-    "portable": { "artifactName": "Lumina-${version}.exe" }
+    "files": [
+      "main.js",
+      "preload.js",
+      "web/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "Lumina-${version}.exe"
+    }
   },
   "devDependencies": {
     "electron": "^45.2.3",

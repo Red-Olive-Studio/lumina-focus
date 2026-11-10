@@ -1,15 +1,17 @@
-const { app, BrowserWindow, ipcMain, screen, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, powerMonitor, net } = require('electron');
 const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
+// --test runs a separate copy with its own data folder, next to the real Lumina.
+const TEST = process.argv.includes('--test');
 // Same data as the dailydoro days: move the old folder over once, then use it as Lumina's.
-const dir = path.join(app.getPath('appData'), 'Lumina'), old = path.join(app.getPath('appData'), 'dailydoro');
-try { if (!fs.existsSync(dir) && fs.existsSync(old)) fs.renameSync(old, dir); } catch {}
+const dir = path.join(app.getPath('appData'), TEST ? 'Lumina Test' : 'Lumina'), old = path.join(app.getPath('appData'), 'dailydoro');
+try { if (!TEST && !fs.existsSync(dir) && fs.existsSync(old)) fs.renameSync(old, dir); } catch {}
 app.setName('Lumina');
 app.setPath('userData', dir);
 
-if (!app.requestSingleInstanceLock()) app.quit();
+if (!TEST && !app.requestSingleInstanceLock()) app.quit();
 
 let win, pip, tint, alerting = false, quitting = false, saved = {};
 const store = path.join(dir, 'window.json');
@@ -74,7 +76,7 @@ app.whenReady().then(() => {
     ...(onScreen(saved.normal) ? saved.normal : { width: 400, height: 740 }),
     minWidth: 340, minHeight: 480, frame: false, title: 'Lumina', backgroundColor: '#F7F5F0', webPreferences: prefs,
   });
-  win.loadFile(web('index.html'));
+  win.loadFile(web('index.html'), TEST ? { query: { test: '1' } } : {});
   for (const ev of ['minimize', 'restore', 'show', 'hide', 'focus', 'blur']) win.on(ev, syncPip);
   win.on('moved', () => remember('normal', win));
   win.on('resized', () => remember('normal', win));
@@ -101,3 +103,11 @@ ipcMain.on('tint', (_, on) => setTint(!!on));
 ipcMain.on('login', (_, on) => app.setLoginItemSettings({ openAtLogin: !!on }));
 ipcMain.on('shutdown', (_, on) => execFile('shutdown', on ? ['/s', '/t', '60'] : ['/a'], () => {}));
 ipcMain.handle('idle', () => powerMonitor.getSystemIdleTime());
+// Calendar feeds are fetched here, not in the page, so the page can keep its strict no-network policy.
+ipcMain.handle('ics', async (_, url) => {
+  url = String(url).trim().replace(/^webcal:/i, 'https:');
+  if (!/^https?:\/\//i.test(url)) throw new Error('Not a web link');
+  const r = await net.fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return (await r.text()).slice(0, 5e6);
+});

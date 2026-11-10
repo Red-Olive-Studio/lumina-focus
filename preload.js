@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld('desk', {
   state: send('state'), onState: on('state'), // main window -> mini widget
   cmd: send('cmd'), onCmd: on('cmd'), // mini widget -> main window
   idle: () => ipcRenderer.invoke('idle'),
+  ics: url => ipcRenderer.invoke('ics', url),
 });

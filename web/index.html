@@ -11,10 +11,15 @@
 <body data-phase="focus">
 <header class="bar">
   <span class="brand"><span class="dot"></span>lumina</span>
+  <span id="testBadge" class="badge" hidden>Test</span>
+  <span class="clock"><b id="clock">--:--</b><small id="date"></small></span>
+  <button id="quiet" class="icon" title="Pause reminders for 1 hour" aria-label="Pause reminders for 1 hour" aria-pressed="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/><path class="off" d="M4 4l16 16"/></svg>
+  </button>
   <button id="openSettings" class="icon" title="Settings" aria-label="Settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
   </button>
-  <button id="toMini" class="icon desk" title="Shrink to corner" aria-label="Shrink to corner">
+  <button id="toMini" class="icon desk" title="Shrink to corner widget" aria-label="Shrink to corner widget">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 12h12"/></svg>
   </button>
   <button id="quit" class="icon desk" title="Quit" aria-label="Quit">
@@ -22,60 +27,86 @@
   </button>
 </header>
 
+<div id="toast" class="toast" role="status" aria-live="polite" hidden>
+  <span id="toastText"></span><span id="toastActs"></span>
+  <button id="toastOk" title="Dismiss" aria-label="Dismiss">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
+  </button>
+</div>
+
 <main id="home">
-  <section class="timer">
-    <p id="head" class="eyebrow">Focus</p>
-    <div id="time" class="time">25:00</div>
-    <div class="controls">
-      <button id="toggle" class="go big" aria-label="Start or pause">
-        <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-        <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
-      </button>
-      <button id="brk" class="soft">Take a break</button>
+  <section class="focus">
+    <div class="ftop">
+      <div>
+        <p id="head" class="eyebrow">Focus</p>
+        <div id="time" class="time">25:00</div>
+      </div>
+      <div class="controls">
+        <button id="brk" class="soft">Break</button>
+        <button id="toggle" class="go big" aria-label="Start or pause focus">
+          <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+        </button>
+      </div>
     </div>
-    <p id="focused" class="muted"></p>
+    <div class="bar-progress"><i id="prog"></i></div>
+    <button id="openWeek" class="statline" title="Your week: focus and habits"><span id="stats">No focus yet today</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button>
   </section>
 
-  <section id="today">
-    <p class="next"><span class="eyebrow">Up next</span><b id="next"></b></p>
-    <div id="lineBox">
-      <div class="line" id="line"><div class="pts"></div></div>
-      <div class="ends"><span>Now</span><span id="bedL"></span></div>
-    </div>
-    <div id="timerOut" class="chip" hidden>
-      <span id="timerLeft"></span>
-      <button id="timerCancel" class="icon" title="Cancel timer" aria-label="Cancel timer">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
-      </button>
-    </div>
-  </section>
-
-  <section>
-    <form id="add" class="add">
-      <input id="addText" autocomplete="off" placeholder="Add a task, event or timer" aria-label="Add a task, event or timer" aria-describedby="hint">
-      <button class="icon" aria-label="Add">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-      </button>
-    </form>
-    <p id="hint" class="hint">Try “14:30 Call mom”, “tomorrow 9am Dentist”, “Vitamins 9am daily” or “20m Tea”.</p>
-    <div id="lists"></div>
+  <section class="plan" aria-label="Your day, now and upcoming">
+    <ol id="plan" class="rail"></ol>
+    <div id="later"></div>
+    <button id="doneToggle" class="link" hidden></button>
+    <ol id="doneList" class="rail donelist" hidden></ol>
   </section>
 </main>
 
+<button id="fab" class="fab" aria-label="Add a task, alarm or timer" aria-expanded="false" title="Add (N)">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+<form id="adder" class="adder" hidden aria-label="Add something">
+  <input id="aTitle" placeholder="What? e.g. Call mom" autocomplete="off" aria-label="What">
+  <div class="arow">
+    <input id="aWhen" placeholder="14:30 or 20m" autocomplete="off" aria-label="Time (14:30) or timer length (20m)">
+    <input id="aDay" type="date" aria-label="Day">
+  </div>
+  <div class="chips" id="aChips">
+    <button type="button" data-w="5m">5m</button><button type="button" data-w="15m">15m</button><button type="button" data-w="25m">25m</button><button type="button" data-w="1h">1h</button><button type="button" data-w="2h" data-movie>Movie 2h</button>
+  </div>
+  <div class="arow toggles">
+    <label class="tog" id="tDaily"><input type="checkbox" id="aDaily"> Every day</label>
+    <label class="tog" id="tAlarm"><input type="checkbox" id="aAlarm"> Alarm sound</label>
+    <label class="tog desk-or-test" id="tOff"><input type="checkbox" id="aOff"> Turn off PC at the end</label>
+  </div>
+  <div class="arow end">
+    <p id="aPreview" class="preview"></p>
+    <button type="button" id="aCancel" class="ghost">Cancel</button>
+    <button id="aAdd" class="primary-sm">Add</button>
+  </div>
+</form>
+
+<main id="week" hidden>
+  <h2>Today</h2>
+  <div class="tiles">
+    <div><b id="wFocus">0m</b><small>focus</small></div>
+    <div><b id="wSessions">0</b><small>sessions</small></div>
+    <div><b id="wBreaks">0</b><small>breaks</small></div>
+  </div>
+  <h2>Focus this week</h2>
+  <div id="wBars" class="bars"></div>
+  <h2>Habits <small>last 7 days</small></h2>
+  <ul id="wHabits" class="habits"></ul>
+  <button id="closeWeek" class="primary">Back</button>
+</main>
+
 <main id="settings" hidden>
-  <h2>Focus rhythm <small>minutes</small></h2>
+  <h2>Focus <small>minutes</small></h2>
   <div class="grid">
     <label>Focus <input type="number" min="1" data-s="focus"></label>
     <label>Break <input type="number" min="1" data-s="short"></label>
     <label>Long break <input type="number" min="1" data-s="long"></label>
-    <label>Rounds <input type="number" min="1" data-s="rounds"></label>
-    <label class="chk"><input type="checkbox" data-s="autoNext"> Start next round on its own</label>
-  </div>
-
-  <h2>Alerts</h2>
-  <div class="grid">
-    <label>Show <select data-s="alert"><option value="popup">Pop-up + sound</option><option value="sound">Sound only</option></select></label>
-    <label class="chk"><input type="checkbox" data-s="sound"> Sounds <button id="testAlert" type="button" class="soft small">Test</button></label>
+    <label title="0 = never, only short breaks">Long break every <input type="number" min="0" data-s="longEvery" aria-label="Long break every N sessions, 0 for never"></label>
+    <label class="chk wide"><input type="checkbox" data-s="autoNext"> Keep going: start the next focus or break on its own</label>
   </div>
 
   <h2>My day</h2>
@@ -84,36 +115,59 @@
     <label>Bedtime <input type="time" data-s="bed"></label>
   </div>
 
+  <h2>Meals</h2>
+  <div class="grid" id="mealGrid">
+    <label>Meals a day <select data-s="mealCount"><option value="0">Off</option><option value="3">3</option><option value="5">5</option></select></label>
+    <label title="0 = no reminder">Cook or order, min before <input type="number" min="0" data-s="prep"></label>
+    <label class="m3">Breakfast <input type="time" data-m="breakfast"></label>
+    <label class="m5">Morning snack <input type="time" data-m="snack1"></label>
+    <label class="m3">Lunch <input type="time" data-m="lunch"></label>
+    <label class="m5">Afternoon snack <input type="time" data-m="snack2"></label>
+    <label class="m3">Dinner <input type="time" data-m="dinner"></label>
+  </div>
+
   <h2>Break reminders <small>while you're at the screen</small></h2>
   <ul id="rems" class="list"></ul>
   <form id="addRem" class="add">
     <input name="text" placeholder="New reminder" required aria-label="Reminder text">
     <input type="number" name="every" min="1" value="60" required aria-label="Every N minutes" title="Every N minutes">
-    <button class="icon" aria-label="Add reminder">
+    <button class="icon solid" aria-label="Add reminder">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
     </button>
   </form>
 
+  <h2>Calendar</h2>
+  <label class="stack">Calendar link (iCal), one per line
+    <textarea data-s="calUrls" rows="2" spellcheck="false" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"></textarea>
+  </label>
+  <p class="help">Google Calendar: Settings → your calendar → <i>Secret address in iCal format</i>. Outlook: Settings → Calendar → Shared calendars → Publish → ICS link. Read-only; stays on this PC.</p>
+  <p class="help"><span id="calStatus"></span> <button id="calSync" type="button" class="soft small">Sync now</button></p>
+
   <h2>Evening</h2>
   <div class="grid">
     <label class="chk"><input type="checkbox" data-g="screen"> Screen-time nudge after</label>
-    <label><span></span><input type="number" min="15" data-g="screenLimit" aria-label="Minutes"></label>
+    <label><span>min</span><input type="number" min="15" data-g="screenLimit" aria-label="Minutes"></label>
     <label class="chk"><input type="checkbox" data-g="night"> Warm night light from</label>
     <label><span></span><input type="time" data-g="nightAt" aria-label="Night light time"></label>
-    <label class="chk desk"><input type="checkbox" data-g="shutdown"> Shut down PC at</label>
-    <label class="desk"><span></span><input type="time" data-g="shutdownAt" aria-label="Shutdown time"></label>
-    <label class="chk"><input type="checkbox" data-g="sleep"> Nudge me after bedtime</label>
-    <label class="chk desk"><input type="checkbox" data-s="login"> Start with Windows</label>
+    <label class="chk desk-or-test"><input type="checkbox" data-g="shutdown"> Shut down PC at</label>
+    <label class="desk-or-test"><span></span><input type="time" data-g="shutdownAt" aria-label="Shutdown time"></label>
+    <label class="chk wide"><input type="checkbox" data-g="sleep"> Nudge me to sleep after bedtime</label>
+  </div>
+
+  <h2>App</h2>
+  <div class="grid">
+    <label>Alerts <select data-s="alert"><option value="popup">Pop-up + sound</option><option value="sound">Sound only</option></select></label>
+    <label class="chk"><input type="checkbox" data-s="sound"> Sounds <button id="testAlert" type="button" class="soft small">Test</button></label>
+    <label class="chk desk wide"><input type="checkbox" data-s="login"> Start with Windows</label>
   </div>
 
   <button id="closeSettings" class="primary">Done</button>
 </main>
 
-<div id="toast" class="toast" role="status" aria-live="polite" hidden>
-  <span id="toastText"></span><span id="toastActs"></span>
-  <button id="toastOk" title="Dismiss" aria-label="Dismiss">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
-  </button>
-</div>
+<aside id="testPanel" class="testpanel" hidden aria-label="Test mode">
+  <div class="trow"><b>Test mode</b><span id="tClock"></span><button type="button" id="tExit" class="ghost small">Exit</button></div>
+  <div class="trow" id="tTime"></div>
+  <div class="trow" id="tAlerts"></div>
+</aside>
 </body>
 </html>
