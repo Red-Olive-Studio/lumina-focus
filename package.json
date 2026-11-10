@@ -8,9 +8,19 @@
   "scripts": {
     "start": "electron .",
     "web": "npx --yes serve web",
-    "test": "node --test test/"
+    "test": "node --test test/logic.test.mjs",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "studio.redolive.lumina",
+    "productName": "Lumina",
+    "files": ["main.js", "preload.js", "web/**"],
+    "directories": { "output": "dist" },
+    "win": { "signAndEditExecutable": false },
+    "portable": { "artifactName": "Lumina-${version}.exe" }
   },
   "devDependencies": {
-    "electron": "^45.2.3"
+    "electron": "^45.2.3",
+    "electron-builder": "^25.1.8"
   }
 }

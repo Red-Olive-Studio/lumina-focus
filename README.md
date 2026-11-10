@@ -27,6 +27,7 @@ npm install
 npm start      # desktop app (Electron)
 npm run web    # browser version, without the desktop extras
 npm test
+npm run dist   # builds dist/Lumina-VERSION.exe (portable, no install)
 ```
 
 Space starts/pauses the timer. Everything is stored locally on your PC.
