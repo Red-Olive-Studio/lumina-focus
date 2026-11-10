@@ -101,7 +101,13 @@ ipcMain.on('close', () => app.quit());
 ipcMain.on('flash', () => { if (!win.isFocused()) win.flashFrame(true); });
 ipcMain.on('tint', (_, on) => setTint(!!on));
 ipcMain.on('login', (_, on) => app.setLoginItemSettings({ openAtLogin: !!on }));
-ipcMain.on('shutdown', (_, on) => execFile('shutdown', on ? ['/s', '/t', '60'] : ['/a'], () => {}));
+// The page already gave the user 60 seconds to cancel, so these act right away.
+const POWER = {
+  shutdown: ['shutdown', ['/s', '/t', '0']],
+  sleep: ['rundll32.exe', ['powrprof.dll,SetSuspendState', '0,1,0']], // hibernates instead if hibernation is on
+  lock: ['rundll32.exe', ['user32.dll,LockWorkStation']],
+};
+ipcMain.on('power', (_, a) => { if (!TEST && POWER[a]) execFile(...POWER[a], () => {}); });
 ipcMain.handle('idle', () => powerMonitor.getSystemIdleTime());
 // Calendar feeds are fetched here, not in the page, so the page can keep its strict no-network policy.
 ipcMain.handle('ics', async (_, url) => {

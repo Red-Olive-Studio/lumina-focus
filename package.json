@@ -1,7 +1,7 @@
 {
   "name": "lumina",
   "productName": "Lumina",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "A calm little side app: focus timer, what's now and next, your habits and gentle break reminders.",
   "main": "main.js",

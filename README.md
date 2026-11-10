@@ -7,9 +7,9 @@ A calm little side app for Windows that stays open from the moment you start you
 - **Body care**: sit upright, drink water, stand up and walk. These pause when you're away and can be muted for an hour, e.g. during a meeting.
 - **Meals**: 3 or 5 a day, with a "cook or order now" reminder before each.
 - **Habits**: make anything daily (vitamins, pills, reading) and see streaks and your week.
-- **Calendar**: add your Google or Outlook calendar's iCal link and its events join the timeline, with a reminder 10 minutes before.
-- **Alarms and timers**: a timer is one tap; "Movie 2h" turns the PC off when it ends.
-- **Evening**: warm night light, a nudge to sleep, and an optional shutdown at a set time (with 60 seconds to cancel).
+- **Calendars**: add as many iCal links as you like (Google, Outlook), each with a name such as Work or Family. Remove one any time. Events join the timeline with a reminder 10 minutes before.
+- **Alarms and timers**: type a name and a time ("9:00" or "20m"), pick Today or Tomorrow, done. A task shows "now" when due and "missed" only after 5 minutes without a tick.
+- **Evening**: warm night light, a nudge to sleep, an optional shutdown at a set time, and a **sleep timer** (the moon button): after the time you set in Settings (e.g. 90 min for a movie) the PC sleeps, shuts down or locks. You always get 60 seconds to cancel.
 - **Corner widget**: minimize Lumina and a small always-on-top pill shows the timer and what's next. Alerts pop up there while you work in other apps.
 
 ## Add anything
@@ -18,7 +18,7 @@ Press **+** (or N), name it, and give it a time (`14:30`) for a task or alarm, o
 
 ## Test mode
 
-`npm run test-mode` (or Ctrl+Shift+T inside the app) opens a sample day with its own data, so your real day is never touched. Jump to the next item on the timeline, move or speed up time, and fire every kind of alert. Shutdowns are only simulated.
+`npm run test-mode` (or Ctrl+Shift+T inside the app) opens a sample day with its own data, so your real day is never touched. Jump to the next item on the timeline, move or speed up time, and fire every kind of alert. Sleep, lock and shutdown are only simulated.
 
 ## Run
 

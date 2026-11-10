@@ -16,6 +16,9 @@
   <button id="quiet" class="icon" title="Pause reminders for 1 hour" aria-label="Pause reminders for 1 hour" aria-pressed="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/><path class="off" d="M4 4l16 16"/></svg>
   </button>
+  <button id="sleepBtn" class="icon" title="Start sleep timer" aria-label="Start sleep timer" aria-pressed="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+  </button>
   <button id="openSettings" class="icon" title="Settings" aria-label="Settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
   </button>
@@ -68,15 +71,19 @@
   <input id="aTitle" placeholder="What? e.g. Call mom" autocomplete="off" aria-label="What">
   <div class="arow">
     <input id="aWhen" placeholder="14:30 or 20m" autocomplete="off" aria-label="Time (14:30) or timer length (20m)">
-    <input id="aDay" type="date" aria-label="Day">
+    <span class="chips" id="aChips" aria-label="Quick timers">
+      <button type="button" data-w="5m">5m</button><button type="button" data-w="15m">15m</button><button type="button" data-w="25m">25m</button><button type="button" data-w="1h">1h</button>
+    </span>
   </div>
-  <div class="chips" id="aChips">
-    <button type="button" data-w="5m">5m</button><button type="button" data-w="15m">15m</button><button type="button" data-w="25m">25m</button><button type="button" data-w="1h">1h</button><button type="button" data-w="2h" data-movie>Movie 2h</button>
+  <div class="arow" id="aDayRow">
+    <span class="seg" role="group" aria-label="Day">
+      <button type="button" data-d="0">Today</button><button type="button" data-d="1">Tomorrow</button>
+    </span>
+    <input id="aDay" type="date" aria-label="Pick a day">
   </div>
-  <div class="arow toggles">
-    <label class="tog" id="tDaily"><input type="checkbox" id="aDaily"> Every day</label>
-    <label class="tog" id="tAlarm"><input type="checkbox" id="aAlarm"> Alarm sound</label>
-    <label class="tog desk-or-test" id="tOff"><input type="checkbox" id="aOff"> Turn off PC at the end</label>
+  <div class="arow toggles" id="aToggles">
+    <label class="tog"><input type="checkbox" id="aDaily"> Every day</label>
+    <label class="tog"><input type="checkbox" id="aAlarm"> Alarm sound</label>
   </div>
   <div class="arow end">
     <p id="aPreview" class="preview"></p>
@@ -86,6 +93,9 @@
 </form>
 
 <main id="week" hidden>
+  <button type="button" class="back" data-back>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>Back
+  </button>
   <h2>Today</h2>
   <div class="tiles">
     <div><b id="wFocus">0m</b><small>focus</small></div>
@@ -100,6 +110,9 @@
 </main>
 
 <main id="settings" hidden>
+  <button type="button" class="back" data-back>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>Back
+  </button>
   <h2>Focus <small>minutes</small></h2>
   <div class="grid">
     <label>Focus <input type="number" min="1" data-s="focus"></label>
@@ -136,10 +149,13 @@
     </button>
   </form>
 
-  <h2>Calendar</h2>
-  <label class="stack">Calendar link (iCal), one per line
-    <textarea data-s="calUrls" rows="2" spellcheck="false" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"></textarea>
-  </label>
+  <h2>Calendars</h2>
+  <ul id="cals" class="list cals"></ul>
+  <form id="addCal" class="calform">
+    <input name="name" placeholder="Name, e.g. Work" required aria-label="Calendar name">
+    <input name="url" placeholder="iCal link (https://…/basic.ics)" required spellcheck="false" aria-label="Calendar iCal link">
+    <button class="soft small">Add calendar</button>
+  </form>
   <p class="help">Google Calendar: Settings → your calendar → <i>Secret address in iCal format</i>. Outlook: Settings → Calendar → Shared calendars → Publish → ICS link. Read-only; stays on this PC.</p>
   <p class="help"><span id="calStatus"></span> <button id="calSync" type="button" class="soft small">Sync now</button></p>
 
@@ -152,6 +168,15 @@
     <label class="chk desk-or-test"><input type="checkbox" data-g="shutdown"> Shut down PC at</label>
     <label class="desk-or-test"><span></span><input type="time" data-g="shutdownAt" aria-label="Shutdown time"></label>
     <label class="chk wide"><input type="checkbox" data-g="sleep"> Nudge me to sleep after bedtime</label>
+  </div>
+
+  <h2>Sleep timer <small>the moon button, for a movie you may fall asleep to</small></h2>
+  <div class="grid">
+    <label>After <span><input type="number" min="5" data-s="sleepMin" aria-label="Minutes"> min</span></label>
+    <label>Then <select data-s="sleepAction">
+      <option value="sleep">Sleep the PC</option><option value="shutdown">Shut down the PC</option>
+      <option value="lock">Lock the PC</option><option value="remind">Only remind me</option>
+    </select></label>
   </div>
 
   <h2>App</h2>
