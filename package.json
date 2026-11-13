@@ -1,7 +1,7 @@
 {
   "name": "lumina",
   "productName": "Lumina",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "A calm little side app: focus timer, what's now and next, and gentle reminders for people who work at a PC all day.",
   "main": "main.js",
@@ -9,7 +9,7 @@
     "start": "electron .",
     "web": "npx --yes serve web",
     "test": "node --test test/logic.test.mjs",
-    "dist": "electron-builder --win portable",
+    "dist": "electron-builder --win nsis",
     "test-mode": "electron . --test"
   },
   "build": {
@@ -27,8 +27,11 @@
       "signAndEditExecutable": false,
       "icon": "web/icon.png"
     },
-    "portable": {
-      "artifactName": "Lumina-${version}.exe"
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "artifactName": "Lumina-Setup-${version}.exe"
     }
   },
   "devDependencies": {

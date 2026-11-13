@@ -2,10 +2,10 @@
 
 ## ⬇ Download / İndir
 
-**[Lumina.exe — latest version / son sürüm](https://github.com/Red-Olive-Studio/lumina-focus/releases/latest/download/Lumina.exe)** (Windows 10/11, portable, no install / kurulum yok)
+**[Lumina-Setup.exe — latest version / son sürüm](https://github.com/Red-Olive-Studio/lumina-focus/releases/latest/download/Lumina-Setup.exe)** (Windows 10/11)
 
-- **EN:** Download and double-click. Windows may show "Windows protected your PC" because the app isn't signed yet: click **More info → Run anyway**. Try everything safely with **Ctrl+Shift+T** (test mode: a sample day with its own data). All versions and what changed: [Releases](https://github.com/Red-Olive-Studio/lumina-focus/releases).
-- **TR:** İndirip çift tıklayın. Uygulama henüz imzalı olmadığı için Windows "Windows bilgisayarınızı korudu" diyebilir: **Ek bilgi → Yine de çalıştır**'a tıklayın. Her şeyi güvenle denemek için **Ctrl+Shift+T** (test modu: kendi verisiyle örnek bir gün). Tüm sürümler ve değişiklikler: [Releases](https://github.com/Red-Olive-Studio/lumina-focus/releases).
+- **EN:** Download and double-click. It installs in a few seconds with no questions, opens Lumina and adds it to the Start menu and desktop; from then on it opens in about a second. Updating: run the new one, your data stays. Windows may show "Windows protected your PC" because the app isn't signed yet: click **More info → Run anyway**. Try everything safely with **Ctrl+Shift+T** (test mode: a sample day with its own data). All versions and what changed: [Releases](https://github.com/Red-Olive-Studio/lumina-focus/releases).
+- **TR:** İndirip çift tıklayın. Soru sormadan birkaç saniyede kurulur, Lumina'yı açar ve Başlat menüsüne ve masaüstüne ekler; sonrasında yaklaşık bir saniyede açılır. Güncelleme: yenisini çalıştırın, verileriniz kalır. Uygulama henüz imzalı olmadığı için Windows "Windows bilgisayarınızı korudu" diyebilir: **Ek bilgi → Yine de çalıştır**'a tıklayın. Her şeyi güvenle denemek için **Ctrl+Shift+T** (test modu: kendi verisiyle örnek bir gün). Tüm sürümler ve değişiklikler: [Releases](https://github.com/Red-Olive-Studio/lumina-focus/releases).
 - **Phone / Telefon:** https://red-olive-studio.github.io/lumina-focus/
 
 ## Türkçe
@@ -67,7 +67,7 @@ npm install
 npm start           # desktop app (Electron)
 npm run test-mode   # sample day + test panel
 npm test
-npm run dist        # builds dist/Lumina-VERSION.exe (portable, no install)
+npm run dist        # builds dist/Lumina-Setup-VERSION.exe (one-click installer)
 ```
 
 Space starts or pauses focus. Settings → Theme: like Windows, light or dark. Everything is stored locally on your PC. Fonts: Nunito and Fraunces (SIL Open Font License, see `web/fonts`).
