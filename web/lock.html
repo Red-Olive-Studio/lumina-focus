@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Lumina focus lock</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="lock.js"></script>
+</head>
+<body class="cover">
+<main role="alertdialog" aria-labelledby="lockHead" aria-describedby="lockWhat">
+  <img src="logo.svg" alt="" width="56" height="56">
+  <h1 id="lockHead">Back to your focus</h1>
+  <p id="lockWhat" class="what"></p>
+  <p class="help">Switch to an allowed app from the taskbar and this goes away.</p>
+  <div class="arow">
+    <button id="allow5" class="soft">Allow 5 min</button>
+    <button id="allowApp" class="soft"></button>
+    <button id="pause" class="primary-sm">Pause focus</button>
+  </div>
+</main>
+</body>
+</html>

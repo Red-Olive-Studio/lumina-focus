@@ -13,6 +13,7 @@
     <span class="dot"></span>
     <b id="time">25:00</b>
     <span id="next" class="pnext"></span>
+    <button id="brk" class="soft small" title="Switch between focus and break">Break</button>
     <button id="toggle" class="icon go" aria-label="Start or pause">
       <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
@@ -22,6 +23,7 @@
     </button>
   </div>
   <div class="prow palert" id="alert" role="alert" hidden>
+    <span id="aicon" class="aicon" aria-hidden="true"></span>
     <b id="atext"></b>
     <span id="acts"></span>
     <button id="ok" class="icon" title="Dismiss" aria-label="Dismiss">

@@ -1,9 +1,9 @@
 {
   "name": "lumina",
   "productName": "Lumina",
-  "version": "0.4.0",
+  "version": "0.7.0",
   "private": true,
-  "description": "A calm little side app: focus timer, what's now and next, your habits and gentle break reminders.",
+  "description": "A calm little side app: focus timer, what's now and next, and gentle reminders for people who work at a PC all day.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -24,7 +24,8 @@
       "output": "dist"
     },
     "win": {
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "icon": "web/icon.png"
     },
     "portable": {
       "artifactName": "Lumina-${version}.exe"

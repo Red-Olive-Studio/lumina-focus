@@ -5,6 +5,9 @@ const TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 
 desk.onState(s => {
   document.body.dataset.phase = s.phase;
+  document.documentElement.dataset.theme = s.theme;
+  document.body.classList.toggle('nudge', !!s.alert?.icon); // a reminder: quieter, nothing to tick off
+  $('brk').textContent = s.phase === 'focus' ? 'Break' : 'Focus';
   document.body.classList.toggle('running', s.running);
   $('time').textContent = s.time;
   $('next').textContent = s.next;
@@ -14,11 +17,13 @@ desk.onState(s => {
   if (k === alertKey) return; // rebuild buttons only when the alert changes, so clicks never land on a stale one
   alertKey = k;
   if (!s.alert) return;
+  $('aicon').textContent = s.alert.icon || '';
   $('atext').textContent = s.alert.text;
   $('acts').replaceChildren(...s.alert.acts.map((a, i) => Object.assign(document.createElement('button'), a === 'Done'
     ? { className: 'tick', innerHTML: TICK, title: 'Done', ariaLabel: 'Done', onclick: () => desk.cmd('act:' + i) }
     : { className: 'soft', textContent: a, onclick: () => desk.cmd('act:' + i) })));
 });
 $('toggle').onclick = () => desk.cmd('toggle');
+$('brk').onclick = () => desk.cmd('brk');
 $('ok').onclick = () => desk.cmd('ok');
 $('open').onclick = () => desk.open();

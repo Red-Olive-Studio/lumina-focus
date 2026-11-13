@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hm, since, inWindow, nextPhase, fmt, parseAdd, parseWhen, streak, dayLabel, dur, until, calEvents } from '../web/logic.js';
+import { hm, since, inWindow, nextPhase, fmt, parseAdd, parseWhen, streak, dayLabel, dur, until, calEvents, byDay } from '../web/logic.js';
 
 test('day window wraps past midnight', () => {
   assert.equal(since(hm('00:10'), hm('23:30')), 40);
@@ -86,4 +86,61 @@ test('calendar feed', () => {
     ['Nov 11 2026 11:00', 'Standup (moved)', false],
     ['Nov 18 2026 09:30', 'Standup', false],
   ]);
+});
+
+test('history groups by day, newest day first, each day in time order', () => {
+  const log = [{ at: 5, text: 'b' }, { at: 30, text: 'c' }, { at: 1, text: 'a' }];
+  assert.deepEqual(byDay(log, at => (at < 10 ? 'd1' : 'd2')).map(([k, xs]) => [k, xs.map(x => x.text)]), [['d2', ['c']], ['d1', ['a', 'b']]]);
+});
+
+test('focus lock', async () => {
+  const { allowedWin } = await import('../web/logic.js');
+  const chrome = t => ({ name: 'chrome', title: t + ' - Google Chrome' });
+  assert.ok(allowedWin(chrome('YouTube'), ['chrome'])); // whole app
+  assert.ok(allowedWin(chrome('lumina · GitHub'), ['github']));
+  assert.ok(!allowedWin(chrome('YouTube'), ['github', 'docs'])); // other tabs lock
+  assert.ok(!allowedWin({ name: 'Discord', title: 'Discord' }, ['code']));
+  assert.ok(allowedWin({ name: 'Code', title: 'app.js - lumina' }, ['code.exe']));
+  assert.ok(allowedWin({ name: 'explorer', title: 'Task View' }, [])); // shell never locks
+  assert.ok(allowedWin({ name: 'electron', title: 'Lumina', self: true }, []));
+  assert.ok(!allowedWin({ name: 'notepad', title: 'x' }, ['', '  ']));
+});
+
+test('meals resize', async () => {
+  const { resizeMeals } = await import('../web/logic.js');
+  const three = resizeMeals([], 3);
+  assert.deepEqual(three.map(m => m.title), ['Breakfast', 'Lunch', 'Dinner']);
+  const five = resizeMeals(three, 5);
+  assert.deepEqual(five.map(m => m.time), ['08:30', '12:30', '19:00', '10:30', '16:00']);
+  const seven = resizeMeals(five, 7);
+  assert.equal(seven.length, 7);
+  assert.equal(new Set(seven.map(m => m.id)).size, 7);
+  assert.ok(seven.slice(5).every(m => m.title === 'Snack' && /^\d\d:\d\d$/.test(m.time)));
+  assert.equal(seven[5].time, '14:15'); // biggest gap: lunch 12:30 .. afternoon snack 16:00
+  assert.deepEqual(resizeMeals(five, 2).map(m => m.id), ['breakfast', 'lunch']); // keeps custom names/times of the rest
+  assert.equal(resizeMeals(five, 0).length, 0);
+});
+
+test('calendar: time zones and monthly rules', () => {
+  const cal = (...evs) => ['BEGIN:VCALENDAR', ...evs.flatMap(e => ['BEGIN:VEVENT', ...e, 'END:VEVENT']), 'END:VCALENDAR'].join('\r\n');
+  const from = new Date(2026, 0, 1).getTime(), to = new Date(2027, 0, 1).getTime();
+  // a New York meeting is 14:00 UTC in winter, 13:00 UTC in summer, whatever zone this PC is in
+  const ny = calEvents(cal(['UID:a', 'DTSTART;TZID=America/New_York:20261110T090000', 'SUMMARY:NY'], ['UID:b', 'DTSTART;TZID="America/New_York":20260701T090000', 'SUMMARY:NY2']), from, to);
+  assert.equal(ny.find(e => e.title === 'NY').start, Date.UTC(2026, 10, 10, 14));
+  assert.equal(ny.find(e => e.title === 'NY2').start, Date.UTC(2026, 6, 1, 13));
+  // Outlook's Windows zone names aren't IANA: read as local time instead of failing
+  assert.equal(calEvents(cal(['UID:c', 'DTSTART;TZID=W. Europe Standard Time:20261110T090000']), from, to)[0].start, new Date(2026, 10, 10, 9).getTime());
+  const days = rule => calEvents(cal(['UID:m', 'DTSTART:20260113T100000', 'RRULE:' + rule, 'SUMMARY:M']), from, to).map(e => new Date(e.start).getDate());
+  assert.deepEqual(days('FREQ=MONTHLY;BYDAY=2TU;COUNT=4'), [13, 10, 10, 14]); // 2nd Tuesday: Jan, Feb, Mar, Apr 2026
+  assert.deepEqual(days('FREQ=MONTHLY;BYDAY=-1FR;COUNT=3'), [30, 27, 27]); // last Friday
+  assert.deepEqual(days('FREQ=MONTHLY;BYMONTHDAY=1,15;COUNT=3'), [15, 1, 15]); // 1 Jan is before the start
+  const d31 = calEvents(cal(['UID:x', 'DTSTART:20260131T100000', 'RRULE:FREQ=MONTHLY;COUNT=3']), from, to).map(e => new Date(e.start).getMonth());
+  assert.deepEqual(d31, [0, 2, 4]); // the 31st: February and April are skipped, not moved to March
+});
+
+test('focus lock: File Explorer is an app, the taskbar is not', async () => {
+  const { allowedWin } = await import('../web/logic.js');
+  assert.ok(!allowedWin({ name: 'explorer', title: 'Downloads', cls: 'CabinetWClass' }, ['code']));
+  assert.ok(allowedWin({ name: 'explorer', title: 'Downloads', cls: 'CabinetWClass' }, ['explorer']));
+  assert.ok(allowedWin({ name: 'explorer', title: 'Program Manager', cls: 'Progman' }, ['code']));
 });

@@ -1,0 +1,22 @@
+{
+  "name": "lumina-mobile",
+  "version": "0.7.0",
+  "main": "index.js",
+  "dependencies": {
+    "expo": "~58.0.25",
+    "expo-notifications": "~58.1.9",
+    "expo-status-bar": "~58.0.5",
+    "expo-updates": "~58.0.22",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.11.1",
+    "react-native-webview": "14.0.1"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}

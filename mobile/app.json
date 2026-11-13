@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Lumina",
+    "slug": "lumina-focus",
+    "version": "0.7.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "studio.redolive.lumina"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F7F5F0",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "studio.redolive.lumina"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "lumina",
+    "extra": {
+      "eas": {
+        "projectId": "96e272b0-b2b5-451f-b041-5a637c77686b"
+      }
+    },
+    "owner": "red-olive",
+    "runtimeVersion": "exposdk:58.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/96e272b0-b2b5-451f-b041-5a637c77686b"
+    }
+  }
+}

@@ -92,35 +92,65 @@ export const dur = sec => { const m = Math.floor(sec / 60); return m < 60 ? `${m
 export const until = (ms, now) => { const s = (ms - now) / 1000; return s < 60 ? 'now' : s < 3600 ? `in ${Math.round(s / 60)} min` : `in ${dur(s)}`; };
 
 // ---- calendar: read an iCal (.ics) feed, e.g. Google's "secret address in iCal format" ----
-const icsDate = v => {
+// A wall-clock time in an IANA zone (TZID=Europe/Amsterdam) -> epoch ms. Unknown zones (Outlook's Windows names) fall back to this PC's time.
+function zoned(y, mo, d, h, mi, s, tz) {
+  const local = new Date(y, mo - 1, d, h, mi, s).getTime();
+  if (!tz) return local;
+  try {
+    const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+    const off = t => { const p = Object.fromEntries(f.formatToParts(t).map(x => [x.type, +x.value])); return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - t; };
+    const wall = Date.UTC(y, mo - 1, d, h, mi, s);
+    return wall - off(wall - off(wall)); // twice, so times next to a DST switch land right
+  } catch { return local; }
+}
+const icsDate = (v, tz) => {
   const m = v.match(/(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?/);
   if (!m) return NaN;
   const [, y, mo, d, h = 0, mi = 0, s = 0, z] = m.map((x, i) => i && i < 7 && x !== undefined ? +x : x);
-  // shortcut: a TZID time is read as this PC's local time; fine while the calendar and the PC share a time zone.
-  return z ? Date.UTC(y, mo - 1, d, h, mi, s) : new Date(y, mo - 1, d, h, mi, s).getTime();
+  return z ? Date.UTC(y, mo - 1, d, h, mi, s) : zoned(y, mo, d, h, mi, s, m[4] ? tz : null);
 };
 const DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+// Days of one month a MONTHLY rule hits: BYDAY "2TU" / "-1FR" / "MO", or BYMONTHDAY, or the start's date. Months without that date are skipped.
+function monthDays(r, y, mo, d0) {
+  const last = new Date(y, mo + 1, 0).getDate();
+  if (r.BYDAY) return r.BYDAY.split(',').flatMap(x => {
+    const [, nth, dd] = x.match(/^([+-]?\d+)?([A-Z]{2})$/) || [], wd = DAYS.indexOf(dd);
+    if (wd < 0) return [];
+    const first = (wd - new Date(y, mo, 1).getDay() + 7) % 7 + 1, all = [];
+    for (let day = first; day <= last; day += 7) all.push(day);
+    return nth ? [all.at(+nth > 0 ? +nth - 1 : +nth)].filter(Boolean) : all;
+  });
+  const days = r.BYMONTHDAY ? r.BYMONTHDAY.split(',').map(Number).map(x => x < 0 ? last + x + 1 : x) : [d0];
+  return days.filter(x => x >= 1 && x <= last);
+}
 
 function* occurrences(e, to) {
   const r = e.rule;
   if (!r) { yield e.start; return; }
   const n = +(r.INTERVAL || 1), count = +(r.COUNT || Infinity);
-  const until = r.UNTIL ? icsDate(r.UNTIL) + (r.UNTIL.includes('T') ? 0 : 864e5 - 1) : Infinity;
+  const until = r.UNTIL ? icsDate(r.UNTIL, e.tz) + (r.UNTIL.includes('T') ? 0 : 864e5 - 1) : Infinity;
   const byDay = r.FREQ === 'WEEKLY' && r.BYDAY ? r.BYDAY.split(',').map(d => DAYS.indexOf(d.slice(-2))) : null;
-  const d0 = new Date(e.start);
+  const d0 = new Date(e.start), at = (y, mo, d) => { const x = new Date(d0); x.setFullYear(y, mo, d); return x.getTime(); };
   for (let i = 0, k = 0; i < 6000; i++) {
-    const d = new Date(d0);
-    if (r.FREQ === 'DAILY') d.setDate(d0.getDate() + i * n);
-    else if (r.FREQ === 'WEEKLY' && !byDay) d.setDate(d0.getDate() + i * 7 * n);
+    let hits;
+    if (r.FREQ === 'DAILY') hits = [at(d0.getFullYear(), d0.getMonth(), d0.getDate() + i * n)];
+    else if (r.FREQ === 'WEEKLY' && !byDay) hits = [at(d0.getFullYear(), d0.getMonth(), d0.getDate() + i * 7 * n)];
     else if (r.FREQ === 'WEEKLY') {
-      d.setDate(d0.getDate() + i);
+      const d = new Date(at(d0.getFullYear(), d0.getMonth(), d0.getDate() + i));
       if (Math.floor((i + (d0.getDay() + 6) % 7) / 7) % n || !byDay.includes(d.getDay())) continue;
-    } else if (r.FREQ === 'MONTHLY') d.setMonth(d0.getMonth() + i * n); // shortcut: same date each month; "2nd Tuesday" rules show on the start date only
-    else if (r.FREQ === 'YEARLY') d.setFullYear(d0.getFullYear() + i * n);
-    else { yield e.start; return; }
-    const s = d.getTime();
-    if (s > until || k++ >= count || s >= to) return;
-    yield s;
+      hits = [+d];
+    } else if (r.FREQ === 'MONTHLY') {
+      const m = new Date(d0.getFullYear(), d0.getMonth() + i * n, 1);
+      hits = monthDays(r, m.getFullYear(), m.getMonth(), d0.getDate()).sort((a, b) => a - b).map(day => at(m.getFullYear(), m.getMonth(), day)).filter(t => t >= e.start);
+    } else if (r.FREQ === 'YEARLY') {
+      const y = d0.getFullYear() + i * n;
+      hits = new Date(y, d0.getMonth() + 1, 0).getDate() < d0.getDate() ? [] : [at(y, d0.getMonth(), d0.getDate())]; // 29 Feb: leap years only
+    } else { yield e.start; return; }
+    for (const s of hits) {
+      if (s > until || k++ >= count || s >= to) return;
+      yield s;
+    }
   }
 }
 
@@ -133,14 +163,15 @@ export function calEvents(text, from, to) {
     if (line === 'END:VEVENT') { if (ev) evs.push(ev); ev = null; continue; }
     const i = line.indexOf(':');
     if (!ev || i < 0) continue;
-    const name = line.slice(0, i).split(';')[0], v = line.slice(i + 1);
+    const [name, ...params] = line.slice(0, i).split(';'), v = line.slice(i + 1);
+    const tz = params.find(p => p.startsWith('TZID='))?.slice(5).replace(/^"|"$/g, '');
     if (name === 'SUMMARY') ev.title = v.replace(/\\n/gi, ' ').replace(/\\(.)/g, '$1');
-    else if (name === 'DTSTART') { ev.start = icsDate(v); ev.allDay = !v.includes('T'); }
-    else if (name === 'DTEND') ev.end = icsDate(v);
+    else if (name === 'DTSTART') { ev.start = icsDate(v, tz); ev.allDay = !v.includes('T'); ev.tz = tz; }
+    else if (name === 'DTEND') ev.end = icsDate(v, tz);
     else if (name === 'UID') ev.uid = v;
     else if (name === 'RRULE') ev.rule = Object.fromEntries(v.split(';').map(p => p.split('=')));
-    else if (name === 'EXDATE') v.split(',').forEach(x => ev.ex.add(icsDate(x)));
-    else if (name === 'RECURRENCE-ID') ev.rid = icsDate(v);
+    else if (name === 'EXDATE') v.split(',').forEach(x => ev.ex.add(icsDate(x, tz)));
+    else if (name === 'RECURRENCE-ID') ev.rid = icsDate(v, tz);
     else if (name === 'STATUS' && v === 'CANCELLED') ev.cancelled = true;
   }
   const moved = new Set(evs.filter(e => e.rid !== undefined).map(e => e.uid + '@' + e.rid));
@@ -154,4 +185,38 @@ export function calEvents(text, from, to) {
     }
   }
   return out.sort((a, b) => a.start - b.start);
+}
+
+// History, grouped by day: newest day first, entries within a day oldest first.
+export function byDay(log, dayOf) {
+  const m = new Map();
+  for (const x of [...log].sort((a, b) => a.at - b.at)) { const k = dayOf(x.at); m.has(k) ? m.get(k).push(x) : m.set(k, [x]); }
+  return [...m].reverse();
+}
+
+// ---- focus lock: during focus only the apps and tabs you picked may be in front ----
+// Windows' own shell (taskbar, Start, Alt+Tab, lock screen) never locks; File Explorer windows (class CabinetWClass) are a normal app.
+const SHELL = ['', 'explorer', 'shellexperiencehost', 'startmenuexperiencehost', 'searchhost', 'searchapp', 'lockapp', 'textinputhost', 'shellhost'];
+// fg = { name: process name, title: window title, self: Lumina's own window }. A rule matches the app name or any part of the title,
+// so "chrome" allows all of Chrome and "github" allows only tabs/windows with GitHub in their title.
+export function allowedWin(fg, rules) {
+  if (!fg || fg.self || !fg.title || (SHELL.includes(fg.name.toLowerCase()) && fg.cls !== 'CabinetWClass')) return true;
+  const n = fg.name.toLowerCase(), t = fg.title.toLowerCase();
+  return rules.some(r => (r = r.trim().toLowerCase()) && (n === r || n === r.replace(/\.exe$/, '') || t.includes(r)));
+}
+
+// ---- meals: any number a day; growing adds the classic meals first, then snacks in the biggest gap ----
+export const MEAL_DEFAULTS = [['breakfast', 'Breakfast', '08:30'], ['lunch', 'Lunch', '12:30'], ['dinner', 'Dinner', '19:00'], ['snack1', 'Morning snack', '10:30'], ['snack2', 'Afternoon snack', '16:00']];
+export function resizeMeals(list, n, wake = '07:00', bed = '23:30') {
+  list = list.slice(0, Math.max(0, n));
+  while (list.length < n) {
+    const d = MEAL_DEFAULTS.find(([id]) => !list.some(m => m.id === id));
+    if (d) { list.push({ id: d[0], title: d[1], time: d[2] }); continue; }
+    // biggest gap between wake+1h, the meals, and bed-2h; the new snack goes in its middle
+    const w = hm(wake), pts = [60, ...list.map(m => since(hm(m.time), w)), since(hm(bed), w) - 120].sort((a, b) => a - b);
+    let best = 0;
+    for (let i = 1; i < pts.length; i++) if (pts[i] - pts[i - 1] > pts[best + 1] - pts[best]) best = i - 1;
+    list.push({ id: 'meal' + Date.now().toString(36) + list.length, title: 'Snack', time: hhmm(w + Math.round((pts[best] + pts[best + 1]) / 2)) });
+  }
+  return list;
 }

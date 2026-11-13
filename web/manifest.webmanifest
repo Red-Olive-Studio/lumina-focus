@@ -1,0 +1,14 @@
+{
+  "name": "Lumina",
+  "short_name": "Lumina",
+  "description": "A quiet light beside your work: focus timer, now and next, gentle reminders.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F7F5F0",
+  "theme_color": "#F7F5F0",
+  "icons": [
+    { "src": "icon.png", "sizes": "256x256", "type": "image/png", "purpose": "any" },
+    { "src": "logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
