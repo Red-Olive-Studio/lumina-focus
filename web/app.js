@@ -1,4 +1,4 @@
-import { hm, nowMin, dayKey, keyDate, addDays, dayLabel, inWindow, since, nextPhase, phaseLen, fmt, dur, until, parseAdd, parseWhen, streak, clockOf, calEvents, byDay, allowedWin, resizeMeals } from './logic.js';
+import { hm, nowMin, dayKey, keyDate, addDays, dayLabel, inWindow, since, nextPhase, phaseLen, fmt, dur, until, parseAdd, parseWhen, streak, clockOf, calEvents, byDay, allowedWin, resizeMeals, icsUrl } from './logic.js';
 
 const desk = window.desk; // undefined in the browser build
 const TEST = new URLSearchParams(location.search).has('test'); // Ctrl+Shift+T, or `npm run test-mode`
@@ -15,7 +15,7 @@ const MEALS_V4 = [['breakfast', 'Breakfast', 3], ['snack1', 'Morning snack', 5],
 // Body reminders for long days at the PC. The first three are on by default, the rest are optional.
 const PRESETS = [
   ['water', '💧', 'Drink water', 45, true], ['posture', '🪑', 'Sit tall', 20, true], ['walk', '🚶', 'Stand and walk', 30, true],
-  ['eyes', '🔭', 'Look far away, 20s', 20, false], ['stretch', '🧘', 'Stretch neck and wrists', 50, false],
+  ['eyes', '🔭', 'Look far away for 20 seconds', 20, false], ['stretch', '🧘', 'Stretch neck and wrists', 50, false],
   ['breathe', '🫁', 'Three slow breaths', 60, false], ['air', '🪟', 'Fresh air', 120, false],
   ['commit', '💾', 'Save and commit', 60, false], ['inbox', '📨', 'Check messages', 90, false],
 ];
@@ -23,11 +23,11 @@ const preset = ([id, icon, text, every, on]) => ({ id, icon, text, every, on });
 const CAL_COLORS = ['#6A5BD0', '#2F8C79', '#C2557A', '#3A7BD5', '#B7791F', '#5E8B3A'];
 const DEFAULT = {
   settings: {
-    focus: 25, short: 5, long: 15, longEvery: 0, autoNext: true, sound: true, alert: 'popup', theme: 'system',
+    focus: 25, short: 5, long: 15, longEvery: 0, autoNext: true, sound: true, volume: 70, alert: 'popup', theme: 'system',
     wake: '07:00', bed: '23:30', login: false, prep: 30, sleepMin: 90, sleepAction: 'sleep',
   },
   meals: resizeMeals([], 3), // [{ id, title, time }], as many as you like
-  lock: { on: false, rules: [] }, // focus lock: app names or words from tab titles allowed during focus
+  lock: { on: false, rules: [], meetings: true }, // focus lock: app names or words from tab titles allowed during focus
   reminders: PRESETS.map(preset),
   // nightMode: Lumina's warm tint, Windows' own Night light, or both
   guards: { screen: true, screenLimit: 90, sleep: true, night: true, nightAt: '21:00', nightMode: 'tint', shutdown: false, shutdownAt: '00:30' },
@@ -50,7 +50,8 @@ const dk = (ms = now()) => dayKey(dayStart(ms));
 const S = load();
 function load() {
   let saved = {};
-  try { saved = JSON.parse(localStorage.getItem(KEY) ?? (TEST ? null : localStorage.getItem('dailydoro'))) || {}; } catch {}
+  const raw = localStorage.getItem(KEY) ?? (TEST ? null : localStorage.getItem('dailydoro'));
+  try { saved = JSON.parse(raw) || {}; } catch { try { localStorage.setItem(KEY + ':broken', raw); } catch {} } // unreadable: keep a copy before starting fresh
   const d = structuredClone(DEFAULT), fresh = !saved.settings;
   const s = {
     ...d, ...saved, settings: { ...d.settings, ...saved.settings }, guards: { ...d.guards, ...saved.guards },
@@ -93,6 +94,10 @@ function load() {
   for (const x of s.tasks) if (!x.daily && !x.time && x.date < today && !s.done[x.date]?.includes(x.id)) x.date = today;
   s.tasks = s.tasks.filter(x => x.daily || x.date >= today);
   for (const id in s.fired) if (s.fired[id] !== today) delete s.fired[id];
+  for (const r of s.reminders) if (r.id === 'eyes' && r.text === 'Look far away, 20s') r.text = 'Look far away for 20 seconds'; // 0.8 wording, only if unedited
+  const old = dayKey(t - 400 * 864e5); // keep a year of habit ticks and focus stats
+  for (const k in s.done) if (k < old) delete s.done[k];
+  for (const k in s.stats) if (k < old) delete s.stats[k];
   if (TEST && fresh) seed(s, t, today);
   return s;
 }
@@ -145,21 +150,23 @@ const ICON = {
 const iconBtn = (icon, label, onclick, on) => el('button', { className: 'icon act' + (on ? ' on' : ''), innerHTML: ICON[icon], title: label, ariaLabel: label, onclick });
 
 // ---- sound: soft bell notes (fundamental + quiet octave so laptop speakers carry it) ----
-const SFX = { done: [[523.25, 659.25, 783.99, 1046.5], 0.9], alarm: [[880, 880, 1174.66], 1.2], remind: [[1318.5], 0.7], pause: [[587.33], 0.45] };
+// [notes, length, level]: levels even out the peaks (overlapping notes add up), so every sound tops out near -9 dBFS at the default volume
+const SFX = { done: [[523.25, 659.25, 783.99, 1046.5], 0.9, 0.75], alarm: [[880, 880, 1174.66], 1.2, 0.75], remind: [[1318.5], 0.7, 1.1], pause: [[587.33], 0.45, 1.1] };
 let ctx;
 function sfx(kind) {
   if (!S.settings.sound || !SFX[kind]) return;
   try {
     ctx ??= new AudioContext();
     ctx.resume();
-    const [notes, len] = SFX[kind];
+    const [notes, len, level] = SFX[kind], v = level * (S.settings.volume ?? 70) / 100;
+    if (!v) return;
     notes.forEach((f, i) => {
       const t = ctx.currentTime + 0.02 + i * 0.16;
       for (const [mul, vol] of [[1, 0.4], [2, 0.12]]) {
         const o = ctx.createOscillator(), g = ctx.createGain();
         o.frequency.value = f * mul;
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(vol * v, t + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, t + len);
         o.connect(g).connect(ctx.destination);
         o.start(t);
@@ -178,6 +185,7 @@ function notify(text, sound, acts = [], ring = false, icon = '') {
   if (S.settings.alert === 'sound' && !ring) return;
   alert = { text, acts, ring, icon, real: Date.now(), rang: Date.now() };
   renderAlert();
+  const say = $(ring ? 'sayNow' : 'say'); say.textContent = ''; setTimeout(() => { say.textContent = text; }, 50); // screen readers
   if (!icon) desk?.flash();
   if (!desk && !document.hasFocus() && window.Notification?.permission === 'granted') // phones only show notifications from the service worker
     try { navigator.serviceWorker?.controller ? navigator.serviceWorker.ready.then(r => r.showNotification('Lumina', { body: text, icon: 'icon.png' })) : new Notification('Lumina', { body: text }); } catch {}
@@ -243,7 +251,13 @@ const taskMs = t => !t.time ? null : t.daily || t.date === dk() ? dailyMs(t.time
 const meals = () => S.meals.filter(m => m.time && !S.hidden[`meal:${m.id}@${dk()}`]).map(m => ({ id: 'meal:' + m.id, title: m.title || 'Meal', time: m.time, daily: true, meal: true }));
 // Removing an imported event or a meal hides it (until it's over), since the next sync would bring it back.
 const evKey = e => `ev:${e.start}:${e.title}`;
-const shown = e => !S.hidden[evKey(e)];
+const calOf = e => S.cals.find(c => c.name === e.cal);
+const shown = e => !S.hidden[evKey(e)] && !calOf(e)?.off;
+const leadOf = e => calOf(e)?.lead ?? 10; // minutes of heads-up before an event; -1 = none
+const inMeeting = t => S.cal.events.some(e => !e.allDay && !e.free && shown(e) && e.start <= t && e.end > t);
+// Meeting "Join" links open in the default browser (desktop), the phone's browser (app), or a new tab.
+const openLink = u => desk ? desk.link(u) : window.open(u, '_blank', 'noopener');
+const joinAct = e => e.join ? [['Join', () => openLink(e.join)]] : [];
 function hide(key, until, title) { S.hidden[key] = until; log('Removed: ' + title); undoable('Removed: ' + title, () => { delete S.hidden[key]; log('Restored: ' + title); }); changed(); }
 // Shown even in "sound only" mode: a mis-click needs a way back.
 function undoable(text, fn) {
@@ -307,8 +321,8 @@ function schedulePhone(t) {
   if (!nat) return;
   const items = [];
   for (const i of [...curPlan.up, ...curPlan.days.flatMap(([, xs]) => xs)]) {
-    if (i.kind === 'remind' || !i.ms || i.allDay) continue;
-    const at = i.kind === 'event' ? i.ev.start - 10 * MIN : i.ms;
+    if (i.kind === 'remind' || !i.ms || i.allDay || (i.ev && leadOf(i.ev) < 0)) continue;
+    const at = i.kind === 'event' ? i.ev.start - leadOf(i.ev) * MIN : i.ms;
     const body = i.kind === 'event' ? `${i.title} at ${clockOf(i.ev.start)}` : i.kind === 'timer' ? `${i.title} is done` : i.kind === 'focus' ? (S.pomo.phase === 'focus' ? 'Focus done. Take a short break.' : 'Break is over. Back to focus.') : i.kind === 'prep' ? `Time to cook or order ${i.meal.title.toLowerCase()}` : i.title;
     if (at > t) items.push({ at, body });
   }
@@ -318,33 +332,63 @@ function schedulePhone(t) {
 }
 
 // ---- calendars: named iCal links, fetched by the desktop or phone app every 15 minutes ----
+let syncing = false, syncAgain = false; // one sync at a time; a calendar added meanwhile gets a fresh one right after
 async function syncCal() {
+  if (syncing) return void (syncAgain = true);
+  syncing = true;
+  try { await syncOnce(); } finally { syncing = false; if (syncAgain) { syncAgain = false; syncCal(); } }
+}
+async function syncOnce() {
   const cals = S.cals.filter(c => c.url !== 'sample'), from = dayStart();
   if (!fetchIcs || !cals.length) { if (!S.cals.length) S.cal = { events: [], at: 0 }; return changed(); }
   $('calStatus').textContent = 'Syncing…';
-  const res = await Promise.allSettled(cals.map(c => fetchIcs(c.url)));
+  const read = v => { if (!/BEGIN:VCALENDAR/.test(v)) throw new Error('page'); return calEvents(v, from, from + 8 * 864e5); };
+  const res = await Promise.allSettled(cals.map(c => fetchIcs(c.url).then(read)));
   const keep = new Set(S.cals.map(c => c.id)), events = S.cal.events.filter(e => S.cals.some(c => c.url === 'sample' && c.name === e.cal));
   res.forEach((r, i) => {
     const c = cals[i];
     if (!keep.has(c.id)) return; // removed while syncing
-    c.err = r.status === 'rejected';
+    const why = String(r.reason?.message || r.reason || '');
+    c.err = r.status === 'fulfilled' ? '' : why === 'page' ? 'This link opens a web page, not a calendar. Copy the iCal address instead.'
+      : /HTTP 40[134]/.test(why) ? 'This link no longer works. It may have been reset or made private; copy it again.'
+      : /Not a web link/.test(why) ? 'This is not a web link.' : 'Could not load. Check your connection.';
     // offline or a bad answer: keep what we had for this calendar
-    events.push(...(c.err ? S.cal.events.filter(e => e.cal === c.name) : calEvents(r.value, from, from + 8 * 864e5).map(e => ({ ...e, cal: c.name }))));
+    const got = c.err ? S.cal.events.filter(e => e.cal === c.name) : r.value.map(e => ({ ...e, cal: c.name }));
+    if (!c.err) c.n = got.length;
+    events.push(...got);
   });
-  S.cal = { events, at: Date.now() };
+  // shortcut: 2000 events cap keeps the save small (a week rarely has more); store events per calendar if someone needs more
+  S.cal = { events: events.sort((a, b) => a.start - b.start).slice(0, 2000), at: Date.now() };
   changed();
 }
 // Events you removed from the timeline come back as the calendar has them.
 function restoreBtn(c) {
   const gone = Object.keys(S.hidden).filter(k => k.startsWith('ev:') && S.cal.events.some(e => e.cal === c.name && evKey(e) === k));
   return gone.length ? el('button', { type: 'button', className: 'soft small', textContent: `Restore ${gone.length} removed`, title: 'Bring back the events you removed from Lumina',
-    onclick: () => { gone.forEach(k => delete S.hidden[k]); log(`Restored ${gone.length} events from ${c.name}`); changed(); } }) : '';
+    onclick: () => { gone.forEach(k => delete S.hidden[k]); log(`Restored ${gone.length} ${gone.length === 1 ? "event" : "events"} from ${c.name}`); changed(); } }) : '';
 }
+let openCal = ''; // the calendar whose settings are open, kept across re-renders
 function renderCals() {
   const host = u => { try { return new URL(u.replace(/^webcal:/i, 'https:')).hostname; } catch { return u; } };
-  $('cals').replaceChildren(...S.cals.map(c => el('li', {},
+  const rename = (c, name) => {
+    name = name.trim();
+    if (!name || name === c.name || S.cals.some(x => x.name === name)) return changed();
+    for (const e of S.cal.events) if (e.cal === c.name) e.cal = name;
+    c.name = name; changed();
+  };
+  const lead = c => el('select', { ariaLabel: 'Heads-up for ' + c.name, onchange: e => { c.lead = +e.target.value; changed(); } },
+    ...[[-1, 'No heads-up'], [0, 'When it starts'], [5, '5 min before'], [10, '10 min before'], [15, '15 min before'], [30, '30 min before']]
+      .map(([v, l]) => el('option', { value: v, textContent: l, selected: v === (c.lead ?? 10) })));
+  $('cals').replaceChildren(...S.cals.map(c => el('li', { className: c.off ? 'off' : '' },
     el('input', { type: 'color', className: 'cswatch', value: c.color || CAL_COLORS[0], title: 'Color of ' + c.name, ariaLabel: 'Color of ' + c.name, onchange: e => { c.color = e.target.value; changed(); } }),
-    el('div', { className: 'cinfo' }, el('b', { textContent: c.name }), el('small', { className: c.err ? 'lateTxt' : '', textContent: c.err ? 'Could not load. Check the link or your connection.' : c.url === 'sample' ? 'Sample calendar' : host(c.url) })),
+    el('details', { className: 'cinfo', open: openCal === c.id, ontoggle: e => { openCal = e.target.open ? c.id : openCal === c.id ? '' : openCal; } },
+      el('summary', {}, el('b', { textContent: c.name }), el('small', { className: c.err ? 'lateTxt' : '',
+        textContent: c.err ? (c.err === true ? 'Could not load. Check the link or your connection.' : c.err) : c.off ? 'Hidden from the timeline'
+          : c.url === 'sample' ? 'Sample calendar' : host(c.url) + (c.n !== undefined ? ` · ${c.n} ${c.n === 1 ? 'event' : 'events'} this week` : '') })),
+      el('div', { className: 'cedit' },
+        el('label', {}, 'Name ', el('input', { value: c.name, ariaLabel: 'Name of ' + c.name, onchange: e => rename(c, e.target.value) })),
+        el('label', {}, 'Heads-up ', lead(c)),
+        el('label', { className: 'chk' }, el('input', { type: 'checkbox', checked: !c.off, onchange: e => { c.off = !e.target.checked; changed(); } }), ' Show on the timeline'))),
     restoreBtn(c),
     iconBtn('x', 'Remove ' + c.name, () => { S.cals = S.cals.filter(x => x !== c); S.cal.events = S.cal.events.filter(e => e.cal !== c.name); changed(); }))));
   $('calStatus').textContent = !fetchIcs && S.cals.some(c => c.url !== 'sample') ? 'Calendars sync in the desktop and phone apps, not in a browser.'
@@ -361,7 +405,7 @@ const lockReady = () => !!desk && S.lock.on && S.lock.rules.some(r => r.trim());
 function checkLock() {
   if (!desk) return;
   if (lockReady() !== watching) desk.watch(watching = lockReady());
-  const P = S.pomo, active = watching && P.running && P.phase === 'focus' && Date.now() >= lockPause;
+  const P = S.pomo, active = watching && P.running && P.phase === 'focus' && Date.now() >= lockPause && !(S.lock.meetings && inMeeting(now())); // you'll be in Zoom or Teams
   const w = fg?.self ? locked : fg; // clicking the cover or Lumina itself doesn't unlock the app behind it
   const want = active && w && !allowedWin(w, S.lock.rules) ? w : null;
   if (want?.title !== locked?.title) {
@@ -383,7 +427,7 @@ function tick() {
   if (P.running && t >= P.endsAt) {
     const wasFocus = P.phase === 'focus';
     go(t, s.autoNext);
-    notify(wasFocus ? (P.phase === 'long' ? 'Great work. Take a long break.' : 'Focus done. Take a short break.') : 'Break is over. Back to focus.',
+    notify(wasFocus ? (P.phase === 'long' ? 'Focus done. Time for a long break.' : 'Focus done. Take a short break.') : 'Break is over. Back to focus.',
       wasFocus ? 'done' : 'alarm', s.autoNext ? [] : [[wasFocus ? 'Start break' : 'Start focus', toggle]]);
   }
   const due = S.snooze.filter(z => t >= z.at);
@@ -411,7 +455,8 @@ function tick() {
     once('task:' + x.id, ms, () => taskAlert(x));
     if (x.meal && +s.prep > 0) once('prep:' + x.id, ms - s.prep * MIN, () => notify(`Time to cook or order ${x.title.toLowerCase()}`, 'remind'));
   }
-  for (const e of S.cal.events) if (!e.allDay && shown(e)) once(`cal:${e.start}:${e.title}`, e.start - 10 * MIN, () => notify(`${e.title} at ${clockOf(e.start)}`, 'remind'));
+  for (const e of S.cal.events) if (!e.allDay && shown(e) && leadOf(e) >= 0)
+    once(`cal:${e.start}:${e.title}`, e.start - leadOf(e) * MIN, () => notify(leadOf(e) ? `${e.title} at ${clockOf(e.start)}` : `${e.title} starts now`, 'remind', joinAct(e)));
 
   // Away from the PC counts as a break: focus pauses, reminders restart when you're back instead of piling up.
   const away = !!desk && idleSec >= AWAY;
@@ -427,7 +472,7 @@ function tick() {
   } else if (P.away) {
     if (P.away > 1) S.log.push({ at: P.away, end: t, text: 'Away from the PC', kind: 'break' }); // older data stored `true`
     P.away = false;
-    notify('Welcome back. Continue your focus?', 'remind', [['Continue', toggle]]);
+    notify("You're back. Focus is paused.", 'remind', [['Continue', toggle]]);
   }
   if (awake && !away && !quiet) for (const r of S.reminders) {
     if (!r.on) continue;
@@ -441,7 +486,7 @@ function tick() {
   }
   if (g.sleep && !awake && !away && !quiet && t - (S.last.sleep || 0) >= 15 * MIN) {
     S.last.sleep = t;
-    nudge(`Past ${s.bed}. Time to rest.`, '🌙');
+    nudge(`It's past bedtime (${s.bed}).`, '🌙');
   }
   const night = (g.night && inWindow(nowMin(new Date(t)), hm(g.nightAt), hm(s.wake))) || Date.now() < tintTest;
   if (desk) {
@@ -515,6 +560,7 @@ function row(i, t) {
   else if (i.ms && i.ms - t < 3600e3 && !i.day && !i.timer) meta.push(until(i.ms, t));
   if (kind === 'event' && !i.ongoing && !i.allDay && i.ev.end > i.ev.start) meta.push(`until ${clockOf(i.ev.end)}`);
   if (kind === 'event') meta.push(i.ev.cal || 'calendar');
+  if (i.ev?.loc) meta.push(i.ev.loc);
   if (kind === 'remind') meta.push(`every ${i.rem.every} min`);
   if (kind === 'prep') meta.push(`${S.settings.prep} min before ${i.meal.title.toLowerCase()}`);
   if (kind === 'focus') meta.push(S.pomo.phase === 'focus' ? 'focus ends' : 'break ends');
@@ -524,26 +570,28 @@ function row(i, t) {
 
   const doable = x || kind === 'remind';
   const done = x && isDone(x);
-  const label = x ? (done ? 'Undo: ' : 'Done: ') + i.title : 'Done for now, restart: ' + i.title;
+  const label = x ? i.title : 'Done, start counting again: ' + i.title; // tasks are checkboxes: the name plus checked/unchecked
   const dot = doable
-    ? el('button', { className: 'dot', title: x ? (done ? 'Undo' : 'Mark done') : 'Done, start counting again', ariaLabel: label,
+    ? el('button', { className: 'dot', title: x ? (done ? 'Undo' : 'Mark done') : 'Done, start counting again', ariaLabel: label, ...(x && { role: 'checkbox', ariaChecked: String(!!done) }),
       onclick: () => x ? setDone(x, !done) : (S.last[i.rem.id] = now(), sfx('remind'), changed()) })
     : el('span', { className: 'dot' });
   const acts = el('span', { className: 'acts' });
   if (x && !x.meal) acts.append(
-    iconBtn('repeat', x.daily ? 'Repeats every day. Click to stop' : 'Repeat every day', () => { x.daily = !x.daily; x.date = dk(); changed(); }, x.daily),
-    iconBtn('x', 'Delete', () => {
-      S.tasks = S.tasks.filter(y => y !== x); log('Deleted: ' + x.title);
-      undoable('Deleted: ' + x.title, () => { if (!S.tasks.includes(x)) S.tasks.push(x); log('Restored: ' + x.title); });
+    iconBtn('repeat', x.daily ? 'Repeats every day. Click to stop: ' + x.title : 'Repeat every day: ' + x.title, () => { x.daily = !x.daily; x.date = dk(); changed(); }, x.daily),
+    iconBtn('x', 'Remove ' + x.title, () => {
+      S.tasks = S.tasks.filter(y => y !== x); log('Removed: ' + x.title);
+      undoable('Removed: ' + x.title, () => { if (!S.tasks.includes(x)) S.tasks.push(x); log('Restored: ' + x.title); });
       changed();
     }));
-  if (x?.meal) acts.append(iconBtn('x', 'Skip today', () => hide(`${x.id}@${dk()}`, dayStart() + 864e5, x.title)));
-  if (i.ev) acts.append(iconBtn('x', 'Remove from Lumina (stays in your calendar)', () => hide(evKey(i.ev), (i.ev.end || i.ev.start) + 864e5, i.ev.title)));
-  if (i.rem) acts.append(iconBtn('x', 'Turn off (back on in Settings)', () => { i.rem.on = false; log('Turned off: ' + i.rem.text); changed(); }));
-  if (i.timer) acts.append(iconBtn('x', 'Cancel timer', () => { S.timers = S.timers.filter(y => y !== i.timer); log('Timer cancelled: ' + i.title); changed(); }));
+  if (x?.meal) acts.append(iconBtn('x', 'Skip today: ' + x.title, () => hide(`${x.id}@${dk()}`, dayStart() + 864e5, x.title)));
+  // Join shows from 15 minutes before until the meeting ends.
+  if (i.ev?.join && !i.allDay && i.ev.start - t < 15 * MIN && i.ev.end > t) acts.append(el('button', { className: 'soft small join', textContent: 'Join', title: 'Join the call', ariaLabel: 'Join ' + i.title, onclick: () => openLink(i.ev.join) }));
+  if (i.ev) acts.append(iconBtn('x', 'Remove from Lumina (stays in your calendar): ' + i.title, () => hide(evKey(i.ev), (i.ev.end || i.ev.start) + 864e5, i.ev.title)));
+  if (i.rem) acts.append(iconBtn('x', 'Turn off (back on in Settings): ' + i.rem.text, () => { i.rem.on = false; log('Turned off: ' + i.rem.text); changed(); }));
+  if (i.timer) acts.append(iconBtn('x', 'Cancel timer: ' + i.title, () => { S.timers = S.timers.filter(y => y !== i.timer); log('Timer cancelled: ' + i.title); changed(); }));
   const color = i.ev && S.cals.find(c => c.name === i.ev.cal)?.color;
   return el('li', { style: color ? '--cal:' + color : '', className: `it ${kind}${i.late ? ' late' : ''}${done ? ' done' : ''}${x?.id === lastAdded || i.timer?.id === lastAdded ? ' new' : ''}` },
-    el('time', { textContent: i.allDay ? 'All day' : i.ms ? clockOf(i.ms) : '' }),
+    el('time', { textContent: i.allDay ? 'All day' : i.ms ? clockOf(i.ms) : '', dateTime: i.ms && !i.allDay ? new Date(i.ms).toISOString() : '', ariaHidden: i.allDay || i.ms ? null : 'true' }),
     dot,
     el('div', { className: 'body' }, el('b', { textContent: i.title }), meta.length ? el('small', {}, ...meta.flatMap((m, j) => j ? [' · ', m] : [m])) : ''),
     acts);
@@ -557,8 +605,9 @@ function renderPlan(t) {
   const key = JSON.stringify([Math.floor(t / MIN), P, showDone, doneL.map(x => x.id), showHist && S.log.length, S.cals.map(c => c.color)]);
   if (key !== planKey) {
     planKey = key;
+    const had = document.activeElement?.closest('#plan, #later, #doneList') && document.activeElement.getAttribute('aria-label');
     $('plan').replaceChildren(
-      el('li', { className: 'it nowrow' }, el('time', { textContent: clockOf(t) }), el('span', { className: 'dot' }), el('div', { className: 'body' }, el('b', { textContent: 'Now' }))),
+      el('li', { className: 'it nowrow', ariaCurrent: 'time' }, el('time', { textContent: clockOf(t) }), el('span', { className: 'dot' }), el('div', { className: 'body' }, el('b', { textContent: 'Now' }))),
       ...P.nowL.map(i => row(i, t)),
       ...P.up.map(i => row(i, t)),
       P.nowL.length + P.up.length ? '' : el('li', { className: 'it empty' }, el('time'), el('span', { className: 'dot' }), el('div', { className: 'body' }, el('small', { textContent: 'Nothing else today. Press + to add something.' }))));
@@ -567,6 +616,7 @@ function renderPlan(t) {
     $('doneToggle').textContent = showDone ? 'Hide done' : `${doneL.length} done today`;
     $('doneList').hidden = !showDone || !doneL.length;
     $('doneList').replaceChildren(...doneL.map(x => row({ ms: taskMs(x), kind: x.meal ? 'meal' : x.daily ? 'habit' : 'task', title: x.title, task: x }, t)));
+    if (had) [...document.querySelectorAll('#plan [aria-label], #later [aria-label], #doneList [aria-label]')].find(b => b.getAttribute('aria-label') === had)?.focus();
     $('histToggle').textContent = showHist ? 'Hide history' : 'History';
     $('hist').hidden = !showHist;
     if (showHist) renderHist(t);
@@ -597,12 +647,13 @@ function render(t) {
   $('clock').textContent = clockOf(t);
   $('date').textContent = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
   $('time').textContent = tt;
-  document.title = (P.running ? `${tt} · ` : '') + 'Lumina' + (TEST ? ' (test)' : '');
+  document.title = (P.running ? `${Math.ceil(left / 60)} min · ` : '') + 'Lumina' + (TEST ? ' (test)' : ''); // minutes only: screen readers re-read title changes
   const paused = !P.running && P.left < phaseLen(P.phase, s);
   $('head').textContent = (P.phase === 'focus' ? (P.running || paused ? 'Focus' : 'Ready to focus') : P.phase === 'long' ? 'Long break' : 'Break')
     + (s.longEvery > 0 && P.phase === 'focus' ? ` · ${P.round} of ${s.longEvery}` : '') + (paused ? ' · paused' : '');
   document.body.dataset.phase = P.phase;
   document.body.classList.toggle('running', P.running);
+  $('toggle').ariaLabel = P.running ? 'Pause focus' : 'Start focus';
   $('brk').textContent = P.phase === 'focus' ? 'Break' : 'Focus';
   $('brk').title = P.phase === 'focus' ? 'Take a break now' : 'End the break and focus';
   $('prog').style.width = 100 * (1 - Math.max(0, left) / phaseLen(P.phase, s)) + '%';
@@ -645,7 +696,7 @@ function renderWeek(t) {
   $('wBars').replaceChildren(...keys.map(key => {
     const bar = el('i');
     bar.style.height = Math.max(2, 100 * sec(key) / max) + '%';
-    return el('div', { className: 'col' + (key === k ? ' today' : ''), title: `${dayLabel(key, keyDate(k))}: ${dur(sec(key))}` },
+    return el('div', { className: 'col' + (key === k ? ' today' : ''), title: `${dayLabel(key, keyDate(k))}: ${dur(sec(key))}`, role: 'img', ariaLabel: `${keyDate(key).toLocaleDateString('en-GB', { weekday: 'long' })}: ${dur(sec(key))} focus` },
       el('span', { className: 'v', textContent: sec(key) >= 60 ? dur(sec(key)) : '' }), el('div', { className: 'track' }, bar),
       el('small', { textContent: keyDate(key).toLocaleDateString('en-GB', { weekday: 'narrow' }) }));
   }));
@@ -653,7 +704,7 @@ function renderWeek(t) {
   $('wHabits').replaceChildren(...habits.map(x => {
     const n = streak(S.done, x.id, keyDate(k));
     return el('li', {}, el('span', { className: 'title', textContent: x.title }),
-      el('span', { className: 'week' }, ...keys.map(key => el('i', { className: S.done[key]?.includes(x.id) ? 'on' : '', title: dayLabel(key, keyDate(k)) }))),
+      el('span', { className: 'week' }, ...keys.map(key => el('i', { className: S.done[key]?.includes(x.id) ? 'on' : '', title: dayLabel(key, keyDate(k)), role: 'img', ariaLabel: `${dayLabel(key, keyDate(k))}: ${S.done[key]?.includes(x.id) ? 'done' : 'not done'}` }))),
       el('small', { textContent: n >= 2 ? `${n} days` : '' }));
   }), habits.length ? '' : el('li', { className: 'muted', textContent: 'Make anything a daily habit with the repeat button.' }));
 }
@@ -662,7 +713,7 @@ function renderRems() {
   $('rems').replaceChildren(...S.reminders.map(r => el('li', {},
     el('label', { className: 'chk' },
       el('span', { className: 'remicon', textContent: r.icon || '🔔', ariaHidden: 'true' }),
-      el('input', { type: 'checkbox', checked: r.on, ariaLabel: 'On', onchange: e => { r.on = e.target.checked; S.last[r.id] = now(); changed(); } }),
+      el('input', { type: 'checkbox', checked: r.on, ariaLabel: r.text, onchange: e => { r.on = e.target.checked; S.last[r.id] = now(); changed(); } }),
       el('input', { className: 'bare', value: r.text, ariaLabel: 'Reminder text', onchange: e => { r.text = e.target.value.trim() || r.text; changed(); } })),
     el('label', { className: 'every', title: 'Every N minutes' },
       el('input', { type: 'number', min: 1, value: r.every, ariaLabel: 'Every N minutes', onchange: e => { r.every = Math.max(1, e.target.valueAsNumber || r.every); changed(); } }), 'min'),
@@ -690,12 +741,14 @@ $('mealCount').onchange = e => {
 // Focus lock settings: the allowed list, and a picker of what's open right now.
 function renderLock() {
   $('lockOn').checked = S.lock.on;
+  $('lockMeet').checked = S.lock.meetings;
   $('lockRules').replaceChildren(...S.lock.rules.map(r => el('li', {}, el('span', { textContent: r }),
     iconBtn('x', 'Remove ' + r, () => { S.lock.rules = S.lock.rules.filter(x => x !== r); changed(); }))));
   $('lockHint').hidden = !S.lock.on || S.lock.rules.length > 0;
 }
 const addRule = r => { r = r.trim(); if (r && !S.lock.rules.some(x => x.toLowerCase() === r.toLowerCase())) S.lock.rules.push(r); changed(); };
 $('lockOn').onchange = e => { S.lock.on = e.target.checked; changed(); };
+$('lockMeet').onchange = e => { S.lock.meetings = e.target.checked; changed(); };
 $('addRule').onsubmit = e => { e.preventDefault(); addRule(e.target.rule.value); e.target.reset(); };
 $('pickWin').onclick = async () => {
   const wins = await desk.windows().catch(() => []);
@@ -711,6 +764,7 @@ $('pickWin').onclick = async () => {
 // ---- the + button: name, time or timer length, done ----
 const A = { title: $('aTitle'), when: $('aWhen'), day: $('aDay'), daily: $('aDaily'), alarm: $('aAlarm') };
 function openAdder(on) {
+  if (!on && !$('adder').hidden && $('adder').contains(document.activeElement)) $('fab').focus();
   $('adder').hidden = !on;
   $('fab').setAttribute('aria-expanded', on);
   $('fab').classList.toggle('open', on);
@@ -722,7 +776,8 @@ function draft() {
   const p = title ? parseAdd(title, new Date(t)) : null;
   if (w?.min || (!w && p?.timer)) {
     const min = w?.min ?? p.min, label = (w ? title : p.label) || 'Timer', end = t + min * MIN;
-    return { timer: { id: crypto.randomUUID(), endsAt: end, label }, text: `${label}: ${dur(min * 60)} timer, ends ${clockOf(end)}` };
+    const hint = /^\d{1,2}$/.test(whenTxt) ? ` (for ${whenTxt} o'clock, type ${whenTxt}:00)` : ''; // a bare "9" means minutes
+    return { timer: { id: crypto.randomUUID(), endsAt: end, label }, text: `${label}: ${dur(min * 60)} timer, ends ${clockOf(end)}${hint}` };
   }
   if (!p) return { err: whenTxt ? 'Give it a name' : '' };
   const time = w?.time || p.time, daily = A.daily.checked || p.daily;
@@ -730,7 +785,7 @@ function draft() {
   if (!A.day.dataset.touched && !daily && time && date === dk() && dailyMs(time) <= t) date = dayKey(addDays(keyDate(dk()), 1)); // already passed: tomorrow
   const task = { id: crypto.randomUUID(), title: p.title, time, daily, date, alarm: A.alarm.checked && !!time };
   const when = daily ? 'Every day' : dayLabel(date, keyDate(dk()));
-  const passed = !daily && time && date === dk() && dailyMs(time) + MIN <= t ? ' (this time has passed)' : '';
+  const passed = !daily && time && date === dk() && dailyMs(time) + MIN <= t ? ' (already passed)' : '';
   return { task, text: `${when}${time ? ' at ' + time : ''}: ${p.title}${task.alarm ? ', with alarm' : ''}${passed}` };
 }
 function updAdder() {
@@ -775,6 +830,7 @@ $('quiet').onclick = () => {
 $('doneToggle').onclick = () => { showDone = !showDone; planKey = ''; tick(); };
 $('histToggle').onclick = () => { showHist = !showHist; planKey = ''; tick(); };
 $('testAlert').onclick = () => nudge('Drink water', '💧');
+document.querySelector('[data-s=volume]').addEventListener('change', () => setTimeout(sfx, 0, 'remind')); // after the setting saves: hear the new level
 $('askNo').onclick = () => $('ask').close();
 $('addRem').onsubmit = e => {
   e.preventDefault();
@@ -792,6 +848,7 @@ function show(view) {
   openAdder(false);
   if (view === 'week') { $('week').dataset.k = ''; renderWeek(now()); }
   scrollTo(0, 0);
+  if (view !== 'home') { const h = $(view).querySelector('h1, h2'); h?.setAttribute('tabindex', '-1'); h?.focus(); }
 }
 $('openSettings').onclick = () => show($('settings').hidden ? 'settings' : 'home');
 $('closeSettings').onclick = () => show('home');
@@ -804,9 +861,12 @@ $('introGo').onclick = () => { S.introSeen = true; save(); show('home'); };
 $('addCal').onsubmit = e => {
   e.preventDefault();
   const v = Object.fromEntries(new FormData(e.target));
-  const name = v.name.trim(), url = v.url.trim();
+  const name = v.name.trim(), url = icsUrl(v.url);
   if (!name || !url) return;
-  S.cals.push({ id: crypto.randomUUID(), name: S.cals.some(c => c.name === name) ? `${name} 2` : name, url, color: CAL_COLORS[S.cals.length % CAL_COLORS.length] });
+  if (!/^https?:\/\//i.test(url)) { $('calStatus').textContent = 'That is not a web link. Paste the iCal address that starts with https://'; return; }
+  let nm = name;
+  for (let i = 2; S.cals.some(c => c.name === nm); i++) nm = `${name} ${i}`;
+  S.cals.push({ id: crypto.randomUUID(), name: nm, url, color: CAL_COLORS[S.cals.length % CAL_COLORS.length] });
   e.target.reset();
   syncCal();
 };
@@ -831,10 +891,10 @@ document.addEventListener('keydown', e => {
   const typing = e.target.closest('input, select, textarea');
   if (e.ctrlKey && e.shiftKey && e.code === 'KeyT') { e.preventDefault(); return toggleTest(); }
   if ($('ask').open) return; // the dialog handles its own keys
-  if (e.key === 'Escape') { if (!$('adder').hidden) return openAdder(false); if (alert) return clearAlert(); return show('home'); }
+  if (e.key === 'Escape') { if (!$('adder').hidden) return openAdder(false); if (alert) return clearAlert(); if (!typing) show('home'); return; }
   if (typing || e.ctrlKey || e.altKey || e.metaKey) return;
-  if (e.code === 'Space' && !e.target.closest('button')) { e.preventDefault(); toggle(); }
-  if (e.key === 'n' && !$('home').hidden) { e.preventDefault(); openAdder(true); }
+  if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); toggle(); }
+  if (e.key.toLowerCase() === 'n' && !$('home').hidden) { e.preventDefault(); openAdder(true); }
 });
 addEventListener('resize', () => { planKey = ''; });
 
@@ -865,7 +925,7 @@ if (TEST) {
     ['Break over', () => notify('Break is over. Back to focus.', 'alarm')],
     ['Screen time', () => nudge('1h 30m at the screen. Look away.', '🔭')],
     ['Away / back', () => { S.pomo.away = now() - 10 * MIN; }],
-    ['Bedtime', () => nudge(`Past ${S.settings.bed}. Time to rest.`, '🌙')],
+    ['Bedtime', () => nudge(`It's past bedtime (${S.settings.bed}).`, '🌙')],
     ['Night light', () => { tintTest = Date.now() + 5000; nudge('Warm night light on (5 s in test)', '🌇'); }],
     ['Sleep timer 1 min', () => { S.timers = S.timers.filter(x => x.id !== 'sleep'); S.timers.push({ id: 'sleep', label: 'Sleep timer', endsAt: now() + MIN, power: S.settings.sleepAction }); planKey = ''; }],
     ['Bedtime shutdown', () => powerSoon('shutdown', 'Bedtime')],

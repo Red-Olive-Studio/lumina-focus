@@ -18,7 +18,10 @@ Notifications.setNotificationHandler({
   },
 });
 
-async function schedule(items) {
+// One at a time: a second list arriving mid-way would otherwise cancel half of the first and duplicate the rest.
+let queue = Promise.resolve();
+const schedule = items => (queue = queue.then(() => scheduleNow(items)).catch(() => {}));
+async function scheduleNow(items) {
   await Notifications.cancelAllScheduledNotificationsAsync();
   for (const { at, body } of items.slice(0, 60)) { // iOS keeps at most 64
     if (!(at > Date.now()) || typeof body !== 'string') continue;
@@ -32,7 +35,11 @@ async function schedule(items) {
 async function ics(url) {
   url = String(url).trim().replace(/^webcal:/i, 'https:');
   if (!/^https?:\/\//i.test(url)) throw new Error('Not a web link');
-  const r = await fetch(url);
+  // Calendars live on the internet; never let a page use the phone to reach its home network.
+  const host = new URL(url).hostname.replace(/^\[|\]$/g, '');
+  if (/^(localhost$|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|0\.|::1$|f[cd][0-9a-f]{2}:|fe80:)|\.local$/i.test(host)) throw new Error('Not a web link');
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
+  const r = await fetch(url, { signal: ctl.signal }).finally(() => clearTimeout(timer));
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return (await r.text()).slice(0, 5e6);
 }
@@ -51,9 +58,10 @@ export default function App() {
   const reply = (id, ok, value) => web.current?.injectJavaScript(`window.onNative && window.onNative(${JSON.stringify({ id, ok, value })});true;`);
 
   function onMessage(e) {
+    if (!String(e.nativeEvent.url).startsWith(SITE)) return; // only Lumina itself may ask
     let m;
     try { m = JSON.parse(e.nativeEvent.data); } catch { return; }
-    if (m.type === 'schedule' && Array.isArray(m.items)) schedule(m.items).catch(() => {});
+    if (m.type === 'schedule' && Array.isArray(m.items)) schedule(m.items);
     if (m.type === 'ics') ics(m.url).then(v => reply(m.id, true, v), err => reply(m.id, false, String(err?.message || err)));
   }
 

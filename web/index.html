@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#F7F5F0">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.png">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>Lumina</title>
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="logo.svg">
@@ -14,7 +14,8 @@
 </head>
 <body data-phase="focus">
 <header class="bar">
-  <span class="brand"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3v26" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".3"/><circle cx="16" cy="16" r="9" fill="var(--accent)" opacity=".2"/><circle cx="16" cy="16" r="5" fill="var(--accent)"/></svg>lumina</span>
+  <h1 class="sr">lumina</h1>
+  <span class="brand" aria-hidden="true"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3v26" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".3"/><circle cx="16" cy="16" r="9" fill="var(--accent)" opacity=".2"/><circle cx="16" cy="16" r="5" fill="var(--accent)"/></svg>lumina</span>
   <span id="testBadge" class="badge" hidden>Test</span>
   <span class="clock"><b id="clock">--:--</b><small id="date"></small></span>
   <button id="quiet" class="icon" title="Pause reminders for 1 hour" aria-label="Pause reminders for 1 hour" aria-pressed="false">
@@ -34,7 +35,9 @@
   </button>
 </header>
 
-<div id="toast" class="toast" role="status" aria-live="polite" hidden>
+<div id="say" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="sayNow" class="sr" role="alert"></div>
+<div id="toast" class="toast" hidden>
   <span id="toastIcon" class="aicon" aria-hidden="true"></span><span id="toastText"></span><span id="toastActs"></span>
   <button id="toastOk" title="Dismiss" aria-label="Dismiss">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
@@ -115,7 +118,7 @@
     <label class="tog"><input type="checkbox" id="aAlarm"> Alarm sound</label>
   </div>
   <div class="arow end">
-    <p id="aPreview" class="preview"></p>
+    <p id="aPreview" class="preview" aria-live="polite"></p>
     <button type="button" id="aCancel" class="ghost">Cancel</button>
     <button id="aAdd" class="primary-sm">Add</button>
   </div>
@@ -147,7 +150,7 @@
     <label>Focus <input type="number" min="1" data-s="focus"></label>
     <label>Break <input type="number" min="1" data-s="short"></label>
     <label>Long break <input type="number" min="1" data-s="long"></label>
-    <label title="0 = never, only short breaks">Long break every <input type="number" min="0" data-s="longEvery" aria-label="Long break every N sessions, 0 for never"></label>
+    <label>Long break every (0 = never) <input type="number" min="0" data-s="longEvery" aria-label="Long break every N sessions, 0 for never"></label>
     <label class="chk wide"><input type="checkbox" data-s="autoNext"> Keep going: start the next focus or break on its own</label>
   </div>
 
@@ -159,13 +162,13 @@
 
   <h2>Meals</h2>
   <div class="grid">
-    <label title="0 = no meal reminders">Meals a day <input type="number" id="mealCount" min="0" max="12"></label>
-    <label title="0 = no reminder">Cook or order, min before <input type="number" min="0" data-s="prep"></label>
+    <label>Meals a day (0 = none) <input type="number" id="mealCount" min="0" max="12"></label>
+    <label>Cook-or-order nudge, min before (0 = off) <input type="number" min="0" data-s="prep"></label>
   </div>
   <ul id="mealList" class="list meals"></ul>
   <p class="help">Each meal gets its own reminder. Rename them, change the time, or remove one with ×.</p>
 
-  <h2>Reminders <small>tick the ones you want, while you're at the screen</small></h2>
+  <h2>Reminders <small>tick the ones you want</small></h2>
   <ul id="rems" class="list"></ul>
   <form id="addRem" class="add">
     <input name="text" placeholder="New reminder" required aria-label="Reminder text">
@@ -176,8 +179,9 @@
   </form>
 
   <section class="desk">
-  <h2>Focus lock <small>only these apps and tabs while focus runs</small></h2>
+  <h2>Focus lock</h2>
   <label class="chk"><input type="checkbox" id="lockOn"> Cover everything else during focus</label>
+  <label class="chk"><input type="checkbox" id="lockMeet"> Not during calendar meetings</label>
   <p id="lockHint" class="help lateTxt" hidden>Add at least one app or tab below; until then nothing is locked.</p>
   <ul id="lockRules" class="rules"></ul>
   <form id="addRule" class="add">
@@ -195,16 +199,16 @@
   <ul id="cals" class="list cals"></ul>
   <form id="addCal" class="calform">
     <input name="name" placeholder="Name, e.g. Work" required aria-label="Calendar name">
-    <input name="url" placeholder="iCal link (https://…/basic.ics)" required spellcheck="false" aria-label="Calendar iCal link">
+    <input name="url" placeholder="Paste the calendar link" required spellcheck="false" aria-label="Calendar link">
     <button class="soft small">Add calendar</button>
   </form>
   <p class="help">Google Calendar: Settings → your calendar → <i>Secret address in iCal format</i>. Outlook: Settings → Calendar → Shared calendars → Publish → ICS link. Read-only; stays on this PC.</p>
-  <p class="help"><span id="calStatus"></span> <button id="calSync" type="button" class="soft small">Sync now</button></p>
+  <p class="help"><span id="calStatus" role="status"></span> <button id="calSync" type="button" class="soft small">Sync now</button></p>
 
   <h2>Evening</h2>
   <div class="grid">
     <label class="chk"><input type="checkbox" data-g="screen"> Screen-time nudge after</label>
-    <label><span>min</span><input type="number" min="15" data-g="screenLimit" aria-label="Minutes"></label>
+    <label><span>min</span><input type="number" min="15" data-g="screenLimit" aria-label="Screen-time nudge after, minutes"></label>
     <label class="chk"><input type="checkbox" data-g="night"> Warm night light from</label>
     <label><span></span><input type="time" data-g="nightAt" aria-label="Night light time"></label>
     <label class="desk wide">Night light uses <select data-g="nightMode">
@@ -215,9 +219,9 @@
     <label class="chk wide"><input type="checkbox" data-g="sleep"> Nudge me to sleep after bedtime</label>
   </div>
 
-  <h2>Sleep timer <small>the moon button, for a movie you may fall asleep to</small></h2>
+  <h2>Sleep timer <small>the moon button</small></h2>
   <div class="grid">
-    <label>After <span><input type="number" min="5" data-s="sleepMin" aria-label="Minutes"> min</span></label>
+    <label>After <span><input type="number" min="5" data-s="sleepMin" aria-label="Sleep timer length, minutes"> min</span></label>
     <label>Then <select data-s="sleepAction">
       <option value="sleep">Sleep the PC</option><option value="shutdown">Shut down the PC</option>
       <option value="lock">Lock the PC</option><option value="remind">Only remind me</option>
@@ -228,12 +232,13 @@
   <div class="grid">
     <label>Alerts <select data-s="alert"><option value="popup">Pop-up + sound</option><option value="sound">Sound only</option></select></label>
     <label class="chk"><input type="checkbox" data-s="sound"> Sounds <button id="testAlert" type="button" class="soft small">Test</button></label>
+    <label>Volume <input type="range" data-s="volume" min="5" max="100" step="5" aria-label="Sound volume"></label>
     <label>Theme <select data-s="theme"><option value="system">Like Windows</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
     <label class="chk desk"><input type="checkbox" data-s="login"> Start with Windows</label>
   </div>
   <p class="help"><button id="openIntro" type="button" class="soft small">About Lumina</button></p>
 
-  <button id="closeSettings" class="primary">Done</button>
+  <button id="closeSettings" class="primary">Back</button>
 </main>
 
 <aside id="testPanel" class="testpanel" hidden aria-label="Test mode">

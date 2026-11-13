@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, powerMonitor, net } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, powerMonitor, net, shell } = require('electron');
 const { execFile, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -11,7 +11,9 @@ try { if (!TEST && !fs.existsSync(dir) && fs.existsSync(old)) fs.renameSync(old,
 app.setName('Lumina');
 app.setPath('userData', dir);
 
-if (!TEST && !app.requestSingleInstanceLock()) app.quit();
+if (!TEST && !app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
+// Lumina's pages never leave its own files or open windows (test mode reloads itself with ?test).
+app.on('web-contents-created', (_, wc) => { wc.on('will-navigate', (e, u) => { if (!u.startsWith('file:')) e.preventDefault(); }); wc.setWindowOpenHandler(() => ({ action: 'deny' })); });
 
 let win, pip, tints = [], covers = [], lockState = null, watcher, alerting = false, quitting = false, saved = {};
 const store = path.join(dir, 'window.json');
@@ -22,7 +24,8 @@ const prefs = { preload: path.join(__dirname, 'preload.js'), backgroundThrottlin
 function remember(key, w) {
   if (w.isMinimized()) return;
   saved[key] = w.getBounds();
-  fs.writeFile(store, JSON.stringify(saved), () => {});
+  clearTimeout(remember.t); // a drag fires dozens of moves: write once it settles
+  remember.t = setTimeout(() => fs.writeFile(store, JSON.stringify(saved), () => {}), 500);
 }
 function onScreen(b) {
   if (!b) return false;
@@ -106,25 +109,28 @@ ipcMain.on('state', (e, s) => {
 });
 ipcMain.on('cmd', (e, c) => { if (e.sender === pip?.webContents || covers.some(c => e.sender === c.webContents)) win.webContents.send('cmd', String(c)); });
 ipcMain.on('open', showMain);
+// Only https links, so a calendar can't make Lumina run a local file or another protocol.
+ipcMain.on('link', (_, u) => { try { if (new URL(u).protocol === 'https:') shell.openExternal(u); } catch {} });
 ipcMain.on('mini', () => win.minimize());
 ipcMain.on('close', () => app.quit());
 ipcMain.on('flash', () => { if (!win.isFocused()) win.flashFrame(true); });
 ipcMain.on('tint', (_, on) => setTint(!!on));
-ipcMain.on('login', (_, on) => app.setLoginItemSettings({ openAtLogin: !!on }));
+// The portable exe unpacks to a temp folder each run; register the exe itself.
+ipcMain.on('login', (_, on) => app.setLoginItemSettings({ openAtLogin: !!on, path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath }));
 // The page already gave the user 60 seconds to cancel, so these act right away.
 const POWER = {
   shutdown: ['shutdown', ['/s', '/t', '0']],
   sleep: ['rundll32.exe', ['powrprof.dll,SetSuspendState', '0,1,0']], // hibernates instead if hibernation is on
   lock: ['rundll32.exe', ['user32.dll,LockWorkStation']],
 };
-ipcMain.on('power', (_, a) => { if (!TEST && POWER[a]) execFile(...POWER[a], () => {}); });
+ipcMain.on('power', (e, a) => { if (!TEST && POWER[a] && e.sender === win?.webContents) execFile(...POWER[a], () => {}); }); // only the main window may sleep or shut down the PC
 ipcMain.handle('idle', () => powerMonitor.getSystemIdleTime());
 
 // ---- focus lock: report the window in front; the page decides, and this shows or hides the cover ----
 const ps = (script, cb) => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding=[Text.Encoding]::UTF8;' + script], { windowsHide: true, maxBuffer: 1 << 20 }, cb);
 // Prints "pid|process|window class|title" whenever the window in front changes.
 const FG = `Add-Type 'using System;using System.Text;using System.Runtime.InteropServices;public class W{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll",CharSet=CharSet.Unicode)]public static extern int GetWindowText(IntPtr h,StringBuilder s,int n);[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,out uint p);[DllImport("user32.dll",CharSet=CharSet.Unicode)]public static extern int GetClassName(IntPtr h,StringBuilder s,int n);}';
-$last='';while($true){$h=[W]::GetForegroundWindow();$b=New-Object Text.StringBuilder 512;[void][W]::GetWindowText($h,$b,512);$p=[uint32]0;[void][W]::GetWindowThreadProcessId($h,[ref]$p);
+$last='';while(Get-Process -Id ${process.pid} -ErrorAction SilentlyContinue){$h=[W]::GetForegroundWindow();$b=New-Object Text.StringBuilder 512;[void][W]::GetWindowText($h,$b,512);$p=[uint32]0;[void][W]::GetWindowThreadProcessId($h,[ref]$p);
 $c=New-Object Text.StringBuilder 256;[void][W]::GetClassName($h,$c,256);
 $n=(Get-Process -Id $p -ErrorAction SilentlyContinue).ProcessName;$l="$p|$n|$c|" + ($b.ToString() -replace '[\\t\\r\\n]',' ');if($l -ne $last){$last=$l;[Console]::WriteLine($l)};Start-Sleep -Milliseconds 600}`;
 function watch(on) {
@@ -182,7 +188,7 @@ ipcMain.on('winNight', (_, on) => ps(nightPs(!!on), () => {}));
 ipcMain.handle('ics', async (_, url) => {
   url = String(url).trim().replace(/^webcal:/i, 'https:');
   if (!/^https?:\/\//i.test(url)) throw new Error('Not a web link');
-  const r = await net.fetch(url);
+  const r = await net.fetch(url, { signal: AbortSignal.timeout(20000) }); // a stalled server must not leave "Syncing…" forever
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return (await r.text()).slice(0, 5e6);
 });

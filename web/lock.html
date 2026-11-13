@@ -2,13 +2,13 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>Lumina focus lock</title>
 <link rel="stylesheet" href="style.css">
 <script type="module" src="lock.js"></script>
 </head>
 <body class="cover">
-<main role="alertdialog" aria-labelledby="lockHead" aria-describedby="lockWhat">
+<main><div role="alertdialog" aria-labelledby="lockHead" aria-describedby="lockWhat">
   <img src="logo.svg" alt="" width="56" height="56">
   <h1 id="lockHead">Back to your focus</h1>
   <p id="lockWhat" class="what"></p>
@@ -16,8 +16,8 @@
   <div class="arow">
     <button id="allow5" class="soft">Allow 5 min</button>
     <button id="allowApp" class="soft"></button>
-    <button id="pause" class="primary-sm">Pause focus</button>
+    <button id="pause" class="primary-sm" autofocus>Pause focus</button>
   </div>
-</main>
+</div></main>
 </body>
 </html>

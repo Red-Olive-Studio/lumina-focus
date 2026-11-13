@@ -1,5 +1,30 @@
 # Lumina
 
+## ⬇ Download / İndir
+
+**[Lumina.exe — latest version / son sürüm](https://github.com/Red-Olive-Studio/lumina-focus/releases/latest/download/Lumina.exe)** (Windows 10/11, portable, no install / kurulum yok)
+
+- **EN:** Download and double-click. Windows may show "Windows protected your PC" because the app isn't signed yet: click **More info → Run anyway**. Try everything safely with **Ctrl+Shift+T** (test mode: a sample day with its own data). All versions and what changed: [Releases](https://github.com/Red-Olive-Studio/lumina-focus/releases).
+- **TR:** İndirip çift tıklayın. Uygulama henüz imzalı olmadığı için Windows "Windows bilgisayarınızı korudu" diyebilir: **Ek bilgi → Yine de çalıştır**'a tıklayın. Her şeyi güvenle denemek için **Ctrl+Shift+T** (test modu: kendi verisiyle örnek bir gün). Tüm sürümler ve değişiklikler: [Releases](https://github.com/Red-Olive-Studio/lumina-focus/releases).
+- **Phone / Telefon:** https://red-olive-studio.github.io/lumina-focus/
+
+## Türkçe
+
+**İşinizin yanında sakin bir ışık.** Bilgisayarı açtığınız andan kapatana kadar açık kalan, Windows için sakin, küçük bir yan uygulama. Gününüzün **şimdi** ve **sırada** olanını gösterir, geride kalanı değil.
+
+- **Tek zaman çizelgesi**: görevler, öğünler, takvim etkinlikleri, mola hatırlatmaları, zamanlayıcılar, gece ışığı ve yatma saati, saat sırasıyla.
+- **Kendiliğinden süren odak**: odak ve kısa molalar gün boyu kendi kendine döner; bilgisayardan kalkınca odak durur ve mola sayılır.
+- **Takvimler**: Google veya Outlook iCal bağlantılarını ekleyin, her birine ad, uyarı süresi verin ya da gizleyin. Meet, Zoom, Teams, Webex ve Whereby toplantılarında 15 dakika önce **Katıl** düğmesi çıkar.
+- **Odak kilidi**: odak sırasında yalnızca seçtiğiniz uygulamalar ve sekmeler açık kalır; toplantı sırasında kilit kenara çekilir.
+- **Hatırlatmalar, alışkanlıklar, öğünler, alarmlar**: su, duruş, yürüyüş, göz molası; günlük alışkanlık serileri; istediğiniz kadar öğün.
+- **Akşam**: gece ışığı, uyku hatırlatması ve film için **uyku zamanlayıcısı** (iptal için her zaman 60 saniye).
+- **Köşe widget'ı**: Lumina'yı küçültünce her zaman üstte duran küçük bir hap; zamanlayıcıyı ve sıradakini gösterir.
+- **Ekleme**: **+** (veya N), ad ve saat (`14:30`) ya da süre (`20m`) yazın.
+
+Her şey yalnızca bilgisayarınızda saklanır. Arayüz şimdilik İngilizce.
+
+## English
+
 **A quiet light beside your work.** A calm little side app for Windows that stays open from the moment you start your PC until you shut it down. It keeps what matters **now** and **next** in view, and nothing behind you.
 
 **Who it's for:** people who spend the whole day at a PC: developers, designers, writers. In flow, the rest of the day disappears: the meeting slips by, the water glass stays full, and it's 7 pm with stiff shoulders. Lumina sits in the corner and keeps the day in view so you can stay deep in the work. First launch shows a short intro (later: Settings → About Lumina).
@@ -11,11 +36,12 @@
 - **Remove anything**: every row on the timeline has an ×. Tasks are deleted, a meal is skipped for today, a calendar event is hidden in Lumina (your calendar is untouched), a reminder is switched off.
 - **Meals**: as many a day as you like (Settings → Meals a day). Each meal gets its own reminder and a "cook or order now" one before it; rename them and set each time.
 - **Undo and restore**: removing a task or an event shows an Undo for a moment. Removed calendar events can also be brought back any time: Settings → Calendars → *Restore N removed*.
-- **Focus lock**: pick the apps and tabs you work in (e.g. `chrome`, `code`, or a word from a tab title like `github`). While focus runs, anything else (File Explorer included) gets covered on every monitor until you switch back. The cover offers *Allow 5 min*, *Always allow this app* and *Pause focus*; the taskbar always stays free. Desktop only.
+- **Focus lock**: pick the apps and tabs you work in (e.g. `chrome`, `code`, or a word from a tab title like `github`). While focus runs, anything else (File Explorer included) gets covered on every monitor until you switch back. The cover offers *Allow 5 min*, *Always allow this app* and *Pause focus*; the taskbar always stays free. During a calendar meeting the lock steps aside (you'll be in Zoom or Teams); switch that off in Settings if you like. Desktop only.
 - **Habits**: make anything daily (vitamins, pills, reading) and see streaks and your week.
-- **Calendars**: add as many iCal links as you like (Google, Outlook), each with a name such as Work or Family. Time zones, "2nd Tuesday"-style monthly events and moved or cancelled occurrences are handled. Pick each calendar's color, remove one any time. Events join the timeline with a reminder 10 minutes before.
+- **Calendars**: add as many iCal links as you like (Google, Outlook), each with a name such as Work or Family. Time zones, "2nd Tuesday"-style monthly events and moved or cancelled occurrences are handled. Paste Google's or Outlook's page link by mistake and Lumina turns it into the calendar link when it can. Click a calendar's name to rename it, pick its heads-up (none, at the start, or 5 to 30 minutes before) or hide it from the timeline without removing it. Meetings with a Google Meet, Zoom, Teams, Webex or Whereby link get a **Join** button 15 minutes before, and in the heads-up alert. If a link stops working, Lumina says why (reset, private, a web page instead of a calendar, or offline).
 - **Alarms and timers**: type a name and a time ("9:00" or "20m"), pick Today or Tomorrow, done. A task shows "now" when due and "missed" only after 5 minutes without a tick.
 - **Evening**: warm night light (Lumina's tint, Windows' own Night light, or both), a nudge to sleep, an optional shutdown at a set time, and a **sleep timer** (the moon button, which always asks first): after the time you set in Settings (e.g. 90 min for a movie) the PC sleeps, shuts down or locks. You always get 60 seconds to cancel.
+- **Sounds**: soft bells with a volume slider (Settings → App); every sound peaks at about the same level.
 - **Corner widget**: minimize Lumina and a small always-on-top pill shows the timer and what's next. Alerts pop up there while you work in other apps.
 
 ## Add anything
@@ -50,7 +76,7 @@ Space starts or pauses focus. Settings → Theme: like Windows, light or dark. E
 
 - **Mark**: a glowing dot on a line: *now*, on the line of your day. Same shape as the timeline in the app. Files: `web/logo.svg`, `web/icon.png` (window and taskbar icon).
 - **Colors**: Paper `#F7F5F0`, Ink `#1F1D1A`, Glow (focus) `#E0912A`, Calm (break) `#2F8C79`, Late `#B9502A`, Calendar `#6A5BD0`. Dark: `#151412` paper, `#F3EFE8` ink, `#F0A53A` glow, `#4DB39C` calm.
-- **Type**: Fraunces 600 for the wordmark (always lowercase: *lumina*), Nunito for everything else, Segoe UI Variable for digits.
+- **Type**: Fraunces 600 for the wordmark (always lowercase: *lumina*), Nunito for everything else, Segoe UI Variable for digits. The wordmark is the logo; in sentences, window titles and notifications the name is written *Lumina*.
 - **Voice**: short, calm, no exclamation marks. Say what happens ("In 1h 30m the PC sleeps"), never nag.
 
 Made by Red Olive Studio.

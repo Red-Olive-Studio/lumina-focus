@@ -25,7 +25,7 @@ export function nextPhase(phase, round, s) {
 }
 export const phaseLen = (phase, s) => s[phase] * 60;
 
-export const hhmm = m => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(Math.floor(m % 60)).padStart(2, '0')}`;
+export const hhmm = m => { m = (Math.floor(m) % 1440 + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
 export const clockOf = ms => hhmm(nowMin(new Date(ms)));
 
 function clock(h, mm = '0', ap) {
@@ -42,7 +42,7 @@ export function parseWhen(s) {
   if ((m = s.match(/^(\d{1,2}) ?h ?(\d{1,2}) ?m?$/))) return { min: +m[1] * 60 + +m[2] };
   if ((m = s.match(/^(\d+(?:[.,]\d+)?) ?(m|mins?|minutes?|h|hrs?|hours?)?$/))) {
     const n = +m[1].replace(',', '.') * (m[2]?.startsWith('h') ? 60 : 1);
-    return n > 0 ? { min: n } : null;
+    return n > 0 && n <= 7 * 1440 ? { min: n } : null; // up to a week
   }
   return null;
 }
@@ -69,7 +69,8 @@ export function parseAdd(text, now = new Date()) {
   if ((m = s.match(new RegExp(`^${T} (.+)$`, 'i'))) && (m[2] || m[3]) && (t = clock(m[1], m[2], m[3]))) [time, s] = [t, m[4]];
   else if ((m = s.match(new RegExp(`^(.+?) (?:at )?${T}$`, 'i'))) && (m[3] || m[4]) && (t = clock(m[2], m[3], m[4]))) [time, s] = [t, m[1]];
   if (days === null && (m = s.match(/ (?:on )?([a-z]+)$/i)) && (d = dayOff(m[1], now)) !== null) { days = d; s = s.slice(0, m.index); }
-  return s ? { time, title: s, daily, days: daily ? 0 : days ?? 0 } : null;
+  if (!time && (m = s.match(new RegExp(`^${T}$`, 'i'))) && (m[2] || m[3]) && clock(m[1], m[2], m[3])) return null; // "9am" alone is a time, not a name
+  return s ?{ time, title: s, daily, days: daily ? 0 : days ?? 0 } : null;
 }
 
 // Consecutive days a habit was done, counting today only once it's ticked.
@@ -125,27 +126,43 @@ function monthDays(r, y, mo, d0) {
   return days.filter(x => x >= 1 && x <= last);
 }
 
-function* occurrences(e, to) {
+// The start's wall clock in the event's zone, so repeats keep 09:00 there across DST switches.
+function wallOf(t, tz) {
+  if (tz) try {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' })
+      .formatToParts(t).map(x => [x.type, +x.value]));
+    return { y: p.year, mo: p.month - 1, d: p.day, h: p.hour, mi: p.minute, s: p.second };
+  } catch {}
+  const x = new Date(t);
+  return { y: x.getFullYear(), mo: x.getMonth(), d: x.getDate(), h: x.getHours(), mi: x.getMinutes(), s: x.getSeconds() };
+}
+
+function* occurrences(e, to, from = -Infinity) {
   const r = e.rule;
   if (!r) { yield e.start; return; }
-  const n = +(r.INTERVAL || 1), count = +(r.COUNT || Infinity);
+  const n = Math.max(1, parseInt(r.INTERVAL) || 1), count = +(r.COUNT || Infinity);
   const until = r.UNTIL ? icsDate(r.UNTIL, e.tz) + (r.UNTIL.includes('T') ? 0 : 864e5 - 1) : Infinity;
   const byDay = r.FREQ === 'WEEKLY' && r.BYDAY ? r.BYDAY.split(',').map(d => DAYS.indexOf(d.slice(-2))) : null;
-  const d0 = new Date(e.start), at = (y, mo, d) => { const x = new Date(d0); x.setFullYear(y, mo, d); return x.getTime(); };
-  for (let i = 0, k = 0; i < 6000; i++) {
+  const w = wallOf(e.start, e.allDay ? null : e.tz), at = (y, mo, d) => zoned(y, mo + 1, d, w.h, w.mi, w.s, e.allDay ? null : e.tz);
+  const wd0 = new Date(Date.UTC(w.y, w.mo, w.d)).getUTCDay();
+  // Without COUNT, old repeats can't matter: start a step or two before `from` instead of replaying years of them.
+  const days = count === Infinity ? Math.max(0, Math.floor((from - e.start) / 864e5)) : 0;
+  const skip = { DAILY: Math.floor(days / n) - 1, WEEKLY: byDay ? (Math.floor(days / 7 / n) - 1) * 7 * n : Math.floor(days / 7 / n) - 1,
+    MONTHLY: Math.floor(days / 31 / n) - 1, YEARLY: Math.floor(days / 366 / n) - 1 }[r.FREQ];
+  for (let i = Math.max(0, skip || 0), end = i + 6000, k = 0; i < end; i++) {
     let hits;
-    if (r.FREQ === 'DAILY') hits = [at(d0.getFullYear(), d0.getMonth(), d0.getDate() + i * n)];
-    else if (r.FREQ === 'WEEKLY' && !byDay) hits = [at(d0.getFullYear(), d0.getMonth(), d0.getDate() + i * 7 * n)];
+    if (r.FREQ === 'DAILY') hits = [at(w.y, w.mo, w.d + i * n)];
+    else if (r.FREQ === 'WEEKLY' && !byDay) hits = [at(w.y, w.mo, w.d + i * 7 * n)];
     else if (r.FREQ === 'WEEKLY') {
-      const d = new Date(at(d0.getFullYear(), d0.getMonth(), d0.getDate() + i));
-      if (Math.floor((i + (d0.getDay() + 6) % 7) / 7) % n || !byDay.includes(d.getDay())) continue;
-      hits = [+d];
+      if (Math.floor((i + (wd0 + 6) % 7) / 7) % n || !byDay.includes((wd0 + i) % 7)) continue;
+      hits = [at(w.y, w.mo, w.d + i)];
     } else if (r.FREQ === 'MONTHLY') {
-      const m = new Date(d0.getFullYear(), d0.getMonth() + i * n, 1);
-      hits = monthDays(r, m.getFullYear(), m.getMonth(), d0.getDate()).sort((a, b) => a - b).map(day => at(m.getFullYear(), m.getMonth(), day)).filter(t => t >= e.start);
+      const m = new Date(w.y, w.mo + i * n, 1);
+      hits = monthDays(r, m.getFullYear(), m.getMonth(), w.d).sort((a, b) => a - b).map(day => at(m.getFullYear(), m.getMonth(), day)).filter(t => t >= e.start);
     } else if (r.FREQ === 'YEARLY') {
-      const y = d0.getFullYear() + i * n;
-      hits = new Date(y, d0.getMonth() + 1, 0).getDate() < d0.getDate() ? [] : [at(y, d0.getMonth(), d0.getDate())]; // 29 Feb: leap years only
+      // "every 5 May", or with BYMONTH/BYDAY "2nd Sunday of May"; 29 Feb only in leap years (monthDays skips missing dates)
+      const y = w.y + i * n, months = r.BYMONTH ? r.BYMONTH.split(',').map(x => +x - 1).filter(x => x >= 0 && x < 12) : [w.mo];
+      hits = months.flatMap(mo => monthDays(r, y, mo, w.d).map(day => at(y, mo, day))).sort((a, b) => a - b).filter(t => t >= e.start);
     } else { yield e.start; return; }
     for (const s of hits) {
       if (s > until || k++ >= count || s >= to) return;
@@ -157,20 +174,28 @@ function* occurrences(e, to) {
 // Events overlapping [from, to), recurring ones expanded, cancelled/moved ones handled.
 export function calEvents(text, from, to) {
   const evs = [];
-  let ev = null;
-  for (const line of text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/)) {
-    if (line === 'BEGIN:VEVENT') { ev = { ex: new Set() }; continue; }
-    if (line === 'END:VEVENT') { if (ev) evs.push(ev); ev = null; continue; }
+  let ev = null, sub = 0; // sub: inside a VALARM (its SUMMARY is not the event's title)
+  for (const line of text.replace(/(\r\n|\r|\n)[ \t]/g, '').split(/\r\n|\r|\n/)) {
+    const L = line.toUpperCase().trim(); // some feeds use lowercase names
+    if (L === 'BEGIN:VEVENT') { ev = { ex: new Set(), exDay: new Set() }; continue; }
+    if (L === 'END:VEVENT') { if (ev) evs.push(ev); ev = null; sub = 0; continue; }
+    if (ev && L.startsWith('BEGIN:')) { sub++; continue; }
+    if (ev && L.startsWith('END:')) { sub = Math.max(0, sub - 1); continue; }
+    if (sub) continue;
     const i = line.indexOf(':');
     if (!ev || i < 0) continue;
-    const [name, ...params] = line.slice(0, i).split(';'), v = line.slice(i + 1);
+    const [nm, ...params] = line.slice(0, i).split(';'), name = nm.toUpperCase(), v = line.slice(i + 1);
     const tz = params.find(p => p.startsWith('TZID='))?.slice(5).replace(/^"|"$/g, '');
-    if (name === 'SUMMARY') ev.title = v.replace(/\\n/gi, ' ').replace(/\\(.)/g, '$1');
+    const text = v.replace(/\\n/gi, ' ').replace(/\\(.)/g, '$1');
+    if (name === 'SUMMARY') ev.title = text;
+    else if (name === 'LOCATION') ev.loc = text;
+    else if (['DESCRIPTION', 'URL', 'X-GOOGLE-CONFERENCE', 'X-MICROSOFT-SKYPETEAMSMEETINGURL'].includes(name)) ev.join ||= joinLink(text);
+    else if (name === 'TRANSP' && v === 'TRANSPARENT') ev.free = true;
     else if (name === 'DTSTART') { ev.start = icsDate(v, tz); ev.allDay = !v.includes('T'); ev.tz = tz; }
     else if (name === 'DTEND') ev.end = icsDate(v, tz);
     else if (name === 'UID') ev.uid = v;
     else if (name === 'RRULE') ev.rule = Object.fromEntries(v.split(';').map(p => p.split('=')));
-    else if (name === 'EXDATE') v.split(',').forEach(x => ev.ex.add(icsDate(x, tz)));
+    else if (name === 'EXDATE') v.split(',').forEach(x => { ev.ex.add(icsDate(x, tz)); if (!x.includes('T')) ev.exDay.add(x.trim().slice(0, 8)); });
     else if (name === 'RECURRENCE-ID') ev.rid = icsDate(v, tz);
     else if (name === 'STATUS' && v === 'CANCELLED') ev.cancelled = true;
   }
@@ -178,13 +203,30 @@ export function calEvents(text, from, to) {
   const out = [];
   for (const e of evs) {
     if (!Number.isFinite(e.start) || e.cancelled) continue;
-    const len = Number.isFinite(e.end) ? e.end - e.start : e.allDay ? 864e5 : 0;
-    for (const s of occurrences(e, to)) {
+    const len = Number.isFinite(e.end) ? Math.max(0, e.end - e.start) : e.allDay ? 864e5 : 0;
+    for (const s of occurrences(e, to, from - Math.max(len, 864e5))) {
       if (s + Math.max(len, 1) <= from || e.ex.has(s) || (e.rid === undefined && moved.has(e.uid + '@' + s))) continue;
-      out.push({ start: s, end: s + len, title: e.title || 'Busy', allDay: e.allDay });
+      if (e.exDay.size && !e.allDay) { const d = wallOf(s, e.tz); if (e.exDay.has(`${d.y}${String(d.mo + 1).padStart(2, '0')}${String(d.d).padStart(2, '0')}`)) continue; } // EXDATE;VALUE=DATE on a timed event
+      const join = joinLink(e.loc) || e.join, loc = e.loc && !/^https?:/i.test(e.loc) ? e.loc.slice(0, 80) : '';
+      out.push({ start: s, end: s + len, title: e.title || 'Busy', allDay: e.allDay, ...(join && { join }), ...(loc && { loc }), ...(e.free && { free: true }) });
     }
   }
   return out.sort((a, b) => a.start - b.start);
+}
+
+// The video-call link in an event (Meet, Zoom, Teams, Webex, Whereby), so "Join" is one click.
+const JOIN = /https:\/\/(?:meet\.google\.com|(?:[\w-]+\.)?zoom\.us|teams\.microsoft\.com|teams\.live\.com|[\w-]+\.webex\.com|whereby\.com)\/[^\s<>"'\\]+/i;
+export const joinLink = t => (t && t.match(JOIN)?.[0].replace(/[).,;]+$/, '')) || '';
+
+// People paste the calendar's web page link instead of its iCal file; turn the common ones into the file link.
+export function icsUrl(u) {
+  u = u.trim().replace(/^webcal:/i, 'https:');
+  try {
+    const x = new URL(u), cid = x.searchParams.get('cid'), src = x.searchParams.get('src') || (cid && atob(cid.replace(/-/g, '+').replace(/_/g, '/')));
+    if (x.hostname === 'calendar.google.com' && !x.pathname.endsWith('.ics') && src) return `https://calendar.google.com/calendar/ical/${encodeURIComponent(src)}/public/basic.ics`;
+    if (/outlook\.(office365|live)\.com$/.test(x.hostname) && x.pathname.endsWith('/calendar.html')) return u.replace(/calendar\.html/, 'calendar.ics');
+  } catch {}
+  return u;
 }
 
 // History, grouped by day: newest day first, entries within a day oldest first.
@@ -200,8 +242,9 @@ const SHELL = ['', 'explorer', 'shellexperiencehost', 'startmenuexperiencehost',
 // fg = { name: process name, title: window title, self: Lumina's own window }. A rule matches the app name or any part of the title,
 // so "chrome" allows all of Chrome and "github" allows only tabs/windows with GitHub in their title.
 export function allowedWin(fg, rules) {
-  if (!fg || fg.self || !fg.title || (SHELL.includes(fg.name.toLowerCase()) && fg.cls !== 'CabinetWClass')) return true;
-  const n = fg.name.toLowerCase(), t = fg.title.toLowerCase();
+  const n = String(fg?.name || '').toLowerCase();
+  if (!fg || fg.self || !fg.title || (SHELL.includes(n) && fg.cls !== 'CabinetWClass')) return true;
+  const t = fg.title.toLowerCase();
   return rules.some(r => (r = r.trim().toLowerCase()) && (n === r || n === r.replace(/\.exe$/, '') || t.includes(r)));
 }
 
@@ -213,7 +256,7 @@ export function resizeMeals(list, n, wake = '07:00', bed = '23:30') {
     const d = MEAL_DEFAULTS.find(([id]) => !list.some(m => m.id === id));
     if (d) { list.push({ id: d[0], title: d[1], time: d[2] }); continue; }
     // biggest gap between wake+1h, the meals, and bed-2h; the new snack goes in its middle
-    const w = hm(wake), pts = [60, ...list.map(m => since(hm(m.time), w)), since(hm(bed), w) - 120].sort((a, b) => a - b);
+    const w = hm(wake) || 420, b = hm(bed) || 1410, pts = [60, ...list.map(m => since(hm(m.time) || 0, w)), since(b, w) - 120].sort((a, b) => a - b);
     let best = 0;
     for (let i = 1; i < pts.length; i++) if (pts[i] - pts[i - 1] > pts[best + 1] - pts[best]) best = i - 1;
     list.push({ id: 'meal' + Date.now().toString(36) + list.length, title: 'Snack', time: hhmm(w + Math.round((pts[best] + pts[best + 1]) / 2)) });

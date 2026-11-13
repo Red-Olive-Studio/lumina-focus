@@ -13,4 +13,5 @@ contextBridge.exposeInMainWorld('desk', {
   idle: () => ipcRenderer.invoke('idle'),
   ics: url => ipcRenderer.invoke('ics', url),
   windows: () => ipcRenderer.invoke('windows'),
+  link: send('link'), // meeting "Join" links open in the default browser
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hm, since, inWindow, nextPhase, fmt, parseAdd, parseWhen, streak, dayLabel, dur, until, calEvents, byDay } from '../web/logic.js';
+import { hm, since, inWindow, nextPhase, fmt, parseAdd, parseWhen, streak, dayLabel, dur, until, calEvents, byDay, joinLink, icsUrl, hhmm, resizeMeals, allowedWin } from '../web/logic.js';
 
 test('day window wraps past midnight', () => {
   assert.equal(since(hm('00:10'), hm('23:30')), 40);
@@ -143,4 +143,53 @@ test('focus lock: File Explorer is an app, the taskbar is not', async () => {
   assert.ok(!allowedWin({ name: 'explorer', title: 'Downloads', cls: 'CabinetWClass' }, ['code']));
   assert.ok(allowedWin({ name: 'explorer', title: 'Downloads', cls: 'CabinetWClass' }, ['explorer']));
   assert.ok(allowedWin({ name: 'explorer', title: 'Program Manager', cls: 'Progman' }, ['code']));
+});
+
+test('calendar: join links, location, free time, pasted page links', () => {
+  assert.equal(joinLink('Join: https://us02web.zoom.us/j/123?pwd=x). Thanks'), 'https://us02web.zoom.us/j/123?pwd=x');
+  assert.equal(joinLink('https://evil.example/meet.google.com/x'), '');
+  assert.equal(joinLink('http://meet.google.com/abc'), ''); // https only
+  const ics = ['BEGIN:VEVENT', 'UID:a', 'DTSTART:20991113T100000Z', 'DTEND:20991113T110000Z', 'SUMMARY:Sync', 'LOCATION:Room 4\\, floor 2',
+    'X-GOOGLE-CONFERENCE:https://meet.google.com/abc-defg-hij', 'TRANSP:TRANSPARENT', 'END:VEVENT'].join('\r\n');
+  const [e] = calEvents(ics, 0, Date.parse('2100-01-01'));
+  assert.deepEqual([e.loc, e.join, e.free], ['Room 4, floor 2', 'https://meet.google.com/abc-defg-hij', true]);
+  assert.equal(icsUrl('https://calendar.google.com/calendar/embed?src=abc%40group.calendar.google.com'), 'https://calendar.google.com/calendar/ical/abc%40group.calendar.google.com/public/basic.ics');
+  assert.equal(icsUrl('https://outlook.office365.com/owa/calendar/a@b.com/x/calendar.html'), 'https://outlook.office365.com/owa/calendar/a@b.com/x/calendar.ics');
+  assert.equal(icsUrl(' webcal://x.com/a.ics '), 'https://x.com/a.ics');
+  assert.equal(icsUrl('https://calendar.google.com/calendar/u/0?cid=%%%'), 'https://calendar.google.com/calendar/u/0?cid=%%%'); // bad cid: left alone
+});
+
+test('calendar: skipping old repeats gives the same events, alarms and bad rules are safe', () => {
+  const rules = ['FREQ=DAILY', 'FREQ=DAILY;INTERVAL=3', 'FREQ=WEEKLY', 'FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR', 'FREQ=MONTHLY;BYDAY=-1FR', 'FREQ=MONTHLY;INTERVAL=5', 'FREQ=YEARLY'];
+  const from = Date.UTC(2026, 10, 13), to = from + 40 * 864e5;
+  for (const r of rules) {
+    const ics = ['BEGIN:VEVENT', 'UID:a', 'DTSTART;TZID=Europe/Istanbul:20210305T093000', 'DTEND;TZID=Europe/Istanbul:20210305T103000', 'RRULE:' + r,
+      'SUMMARY:Standup', 'BEGIN:VALARM', 'SUMMARY:Reminder', 'END:VALARM', 'END:VEVENT'].join('\r\n');
+    const all = calEvents(ics, Date.UTC(2021, 0, 1), to).filter(e => e.end > from);
+    assert.deepEqual(calEvents(ics, from, to), all, r);
+    assert.ok(all.every(e => e.title === 'Standup'));
+  }
+  const bad = ['BEGIN:VEVENT', 'UID:b', 'DTSTART:20261113T090000Z', 'RRULE:FREQ=DAILY;INTERVAL=x', 'END:VEVENT'].join('\r\n');
+  assert.ok(calEvents(bad, from, from + 2 * 864e5).every(e => Number.isFinite(e.start)));
+});
+
+test('calendar leftovers: date-only EXDATE, yearly BYMONTH, lowercase and CR-only feeds', () => {
+  const ev = (...l) => ['BEGIN:VEVENT', 'UID:x', ...l, 'END:VEVENT'].join('\r\n');
+  const from = Date.UTC(2026, 10, 9), to = from + 7 * 864e5;
+  const ex = calEvents(ev('DTSTART:20261109T090000Z', 'RRULE:FREQ=DAILY;COUNT=3', 'EXDATE;VALUE=DATE:20261110'), from, to);
+  assert.deepEqual(ex.map(e => new Date(e.start).getUTCDate()), [9, 11]);
+  const may = calEvents(ev('DTSTART;VALUE=DATE:20200510', 'RRULE:FREQ=YEARLY;BYMONTH=5;BYDAY=2SU', 'SUMMARY:Mum'), Date.UTC(2027, 4, 1), Date.UTC(2027, 5, 1));
+  assert.deepEqual(may.map(e => new Date(e.start).getDate()), [9]); // 2nd Sunday of May 2027
+  const march = calEvents(ev('DTSTART:20260101T090000Z', 'RRULE:FREQ=YEARLY;BYMONTH=3'), Date.UTC(2026, 0, 1), Date.UTC(2027, 0, 1));
+  assert.deepEqual(march.map(e => new Date(e.start).getUTCMonth()), [2]);
+  assert.equal(calEvents('begin:vevent\rdtstart:20261110T090000Z\rsummary:Lower\rend:vevent', from, to)[0]?.title, 'Lower');
+});
+
+test('parser and helper edge cases', () => {
+  assert.equal(parseAdd('9am'), null); // a time alone is not a name
+  assert.equal(parseAdd('tues 9am'), null);
+  assert.equal(parseWhen('99999999999'), null); // longer than a week
+  assert.equal(hhmm(-30), '23:30');
+  assert.ok(resizeMeals([], 7, 'bad', 'bad').every(m => /^\d\d:\d\d$/.test(m.time)));
+  assert.equal(allowedWin({ title: 'x' }, ['chrome']), true); // no process name: shell-like, never locked
 });
