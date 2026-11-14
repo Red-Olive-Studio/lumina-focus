@@ -254,3 +254,11 @@ test('soon: the widget\'s short countdown', () => {
   assert.equal(soon(59 * 6e4), '59m');
   assert.equal(soon(100 * 6e4), '2h');
 });
+
+test('translate: emoji reminders, and names inside a sentence are only looked up', async () => {
+  const { translate } = await import('../web/i18n.js');
+  assert.equal(translate('💧 Drink water', 'tr'), '💧 Su için');
+  assert.equal(translate('Lunch is done', 'tr'), 'Öğle yemeği bitti');
+  assert.equal(translate('Tea in 5m is done', 'tr'), 'Tea in 5 dk bitti'); // "in 5m" inside a name is not turned into "5 dk sonra"
+  assert.equal(translate('Drink water', 'en'), 'Drink water');
+});

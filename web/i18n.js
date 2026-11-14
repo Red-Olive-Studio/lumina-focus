@@ -8,13 +8,15 @@ export const tr = s => translate(s, LANG);
 
 // "1h 05m" -> "1 sa 05 dk", "20m" -> "20 dk"
 const units = s => s.replace(/\b(\d+)h (\d\d)m\b/g, '$1 sa $2 dk').replace(/\b(\d+)h\b/g, '$1 sa').replace(/\b(\d+)m\b/g, '$1 dk');
+const word = k => WORDS[k] ?? WORDS[k[0]?.toUpperCase() + k.slice(1)]?.toLocaleLowerCase('tr') ?? k;
 export function translate(s, lang) {
   if (lang !== 'tr' || typeof s !== 'string' || !s.trim()) return s;
-  const k = s.trim();
+  const k = s.trim(), em = k.match(/^(\p{Extended_Pictographic}️?\s+)(.+)$/u); // a reminder's emoji in front
+  if (em) return s.replace(k, () => em[1] + translate(em[2], lang));
   let out = WORDS[k] ?? WORDS[k[0].toUpperCase() + k.slice(1)]?.toLocaleLowerCase('tr'); // "lunch" inside "Cook or order lunch"
   if (out === undefined) for (const [re, to] of PATTERNS) {
     const m = k.match(re);
-    if (m) { out = to.replace(/\$(\d)/g, (_, i) => translate(m[+i] ?? '', lang)); break; }
+    if (m) { out = to.replace(/\$(\d)/g, (_, i) => word(m[+i] ?? '')); break; } // a filled-in part (a name, a title) is only looked up, never rewritten
   }
   return units(out === undefined ? s : s.replace(k, () => out));
 }

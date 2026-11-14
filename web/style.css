@@ -397,6 +397,10 @@ body.pip.slim.small .prow { justify-content: center; }
 #settings .grid label span { color: inherit; font-size: inherit; }
 #settings .grid label > span:last-child:has(input), #settings .unit { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
 #settings input[type=number] { width: 4.5em; text-align: center; }
+#settings .grid > label.chk { justify-content: flex-start; } /* switch, then its words; an extra button goes to the far end */
+#settings .grid > label.chk > button { margin-left: auto; }
+#settings .grid input:not([type=checkbox]) { color: var(--ink); }
+input[type=range] { accent-color: var(--accent); }
 .hint { margin: -4px 6px 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 /* on/off switches */
 #settings input[type=checkbox] { appearance: none; position: relative; width: 38px; height: 22px; margin: 0; flex: none; cursor: pointer; border-radius: 999px; border: 0;
@@ -408,8 +412,8 @@ body.pip.slim.small .prow { justify-content: center; }
 /* time box: − 07:30 + */
 .tfield { display: inline-flex; align-items: center; flex: none; border: 1px solid color-mix(in srgb, var(--ink) 40%, var(--card)); border-radius: 10px; background: var(--card); overflow: hidden; }
 .tfield:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
-.tfield .tval { order: 2; width: 4.2em; padding: 6px 0; border: 0; border-radius: 0; background: none; outline: none; text-align: center; font: 600 15px var(--digits); font-variant-numeric: tabular-nums; }
-.tfield button { display: grid; place-items: center; width: 30px; height: 34px; padding: 0; border-radius: 0; color: var(--muted); }
+.tfield .tval { order: 2; width: 3.8em; padding: 6px 0; border: 0; border-radius: 0; background: none; outline: none; text-align: center; font: 600 15px var(--digits); font-variant-numeric: tabular-nums; }
+.tfield button { display: grid; place-items: center; width: 28px; height: 34px; padding: 0; border-radius: 0; color: var(--muted); }
 .tfield button:hover { background: var(--hover); color: var(--ink); }
 .tfield button svg { width: 14px; height: 14px; }
 .tfield .tminus { order: 1; } .tfield .tplus { order: 3; }

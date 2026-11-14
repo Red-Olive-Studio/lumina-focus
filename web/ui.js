@@ -17,7 +17,7 @@ export function timeField(inp) {
   inp.setAttribute('role', 'spinbutton');
   const say = () => inp.setAttribute('aria-valuetext', inp.value);
   const set = v => { if (v !== inp.value) { inp.value = v; inp.dispatchEvent(new Event('change')); } say(); };
-  const step = d => { const [h, m] = (normTime(inp.value) || ok).split(':').map(Number); set(hhmm(Math.round((h * 60 + m) / 15) * 15 + d)); };
+  const step = d => { const [h, m] = (normTime(inp.value) || ok).split(':').map(Number); set(hhmm((d > 0 ? Math.floor((h * 60 + m) / 15) : Math.ceil((h * 60 + m) / 15)) * 15 + d)); }; // to the next quarter in that direction
   inp.addEventListener('focus', () => { ok = normTime(inp.value) || ok; inp.select(); });
   // Capture: tidy the typed text before anyone else reads it; nonsense puts the last good time back.
   inp.addEventListener('change', () => { inp.value = normTime(inp.value) || ok; ok = inp.value; say(); }, true);

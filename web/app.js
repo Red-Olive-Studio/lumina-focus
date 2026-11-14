@@ -1,4 +1,4 @@
-import { hm, nowMin, dayKey, keyDate, addDays, dayLabel, inWindow, since, nextPhase, phaseLen, fmt, dur, until, soon, parseAdd, parseWhen, streak, clockOf, calEvents, byDay, allowedWin, resizeMeals, icsUrl, pruneIcs, unzip, gcalLink } from './logic.js';
+import { hm, nowMin, dayKey, keyDate, addDays, dayLabel, inWindow, since, nextPhase, phaseLen, fmt, dur, until, soon, normTime, parseAdd, parseWhen, streak, clockOf, calEvents, byDay, allowedWin, resizeMeals, icsUrl, pruneIcs, unzip, gcalLink } from './logic.js';
 import { tr, LANG, LOC, trDom } from './i18n.js';
 import { timeField, segSelect, swatches } from './ui.js';
 
@@ -101,7 +101,8 @@ function load() {
   // Unfinished to-dos (no time) come along to today; past events and finished one-offs drop off.
   for (const x of s.tasks) if (!x.daily && !x.time && x.date < today && !s.done[x.date]?.includes(x.id)) x.date = today;
   s.tasks = s.tasks.filter(x => x.daily || x.date >= today);
-  for (const id in s.fired) if (s.fired[id] !== today) delete s.fired[id];
+  for (const id in s.fired) if (s.fired[id] < today) delete s.fired[id];
+  s.power = null; // a pending sleep/shutdown never survives a restart: its Cancel button is gone
   for (const r of s.reminders) if (r.id === 'eyes' && r.text === 'Look far away, 20s') r.text = 'Look far away for 20 seconds'; // 0.8 wording, only if unedited
   const old = dayKey(t - 400 * 864e5); // keep a year of habit ticks and focus stats
   for (const k in s.done) if (k < old) delete s.done[k];
@@ -109,7 +110,10 @@ function load() {
   if (TEST && fresh) seed(s, t, today);
   return s;
 }
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
+let lastSave = 0;
+const save = () => { lastSave = Date.now(); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
+addEventListener('pagehide', save);
+document.addEventListener('visibilitychange', () => document.hidden && save());
 // Desktop: a copy of everything on disk (next to the app's data), so an update, a reinstall or cleared app storage
 // never means adding calendars and settings again. Written shortly after each change and every 10 minutes.
 const backup = () => { try { desk?.backup(JSON.stringify(Object.fromEntries(Object.keys(localStorage).filter(k => k.startsWith('lumina')).map(k => [k, localStorage.getItem(k)])))); } catch {} };
@@ -195,9 +199,10 @@ let alert = null, idleSec = 0;
 // acts: [[label, fn], ...]; ring = alarm that repeats until you answer it (up to 5 minutes)
 // icon = a nudge: a quiet reminder with nothing to tick off, shown in a softer style.
 function notify(text, sound, acts = [], ring = false, icon = '') {
-  text = tr(text);
+  text = text.raw ?? tr(text); // { raw }: the user's own words, shown as typed
   sfx(ring ? 'alarm' : sound);
   if (S.settings.alert === 'sound' && !ring) return;
+  if (alert?.ring && !ring) return; // a ringing alarm stays until it's answered
   alert = { text, acts, ring, icon, real: Date.now(), rang: Date.now() };
   renderAlert();
   const say = $(ring ? 'sayNow' : 'say'); say.textContent = ''; setTimeout(() => { say.textContent = text; }, 50); // screen readers
@@ -217,10 +222,10 @@ function renderAlert() {
     ? el('button', { className: 'tick', innerHTML: ICON.check, title: 'Done', ariaLabel: 'Done', onclick: () => act(i) })
     : el('button', { className: 'soft small', textContent: l, onclick: () => act(i) })));
 }
-function clearAlert() { alert = null; renderAlert(); tick(); }
+function clearAlert() { if (S.power) { S.power = null; save(); } alert = null; renderAlert(); tick(); } // dismissing a shutdown warning cancels it
 function act(i) { const a = alert?.acts[i]; clearAlert(); a?.[1](); }
 const later = z => ['In 10 min', () => { S.snooze.push({ ...z, at: now() + 10 * MIN }); save(); }];
-const taskAlert = t => notify(t.title, 'alarm', [['Done', () => setDone(t, true)], later({ id: t.id, text: t.title })], !!t.alarm);
+const taskAlert = t => notify({ raw: t.meal ? tr(t.title) : t.title }, 'alarm', [['Done', () => setDone(t, true)], later({ id: t.id, text: t.title })], !!t.alarm);
 
 // Sleep / shut down / lock, always with 60 seconds to cancel. Test mode only pretends.
 const POWER = { sleep: 'goes to sleep', shutdown: 'shuts down', lock: 'locks' };
@@ -299,6 +304,7 @@ $('noteCopy').onclick = () => navigator.clipboard?.writeText(`${noteEv.title} ·
 function hide(key, until, title) { S.hidden[key] = until; log('Removed: ' + title); undoable('Removed: ' + title, () => { delete S.hidden[key]; log('Restored: ' + title); }); changed(); }
 // Shown even in "sound only" mode: a mis-click needs a way back.
 function undoable(text, fn) {
+  if (alert?.ring) return; // never hide a ringing alarm or a shutdown's Cancel
   alert = { text: tr(text), acts: [['Undo', () => { fn(); changed(); }]], ring: false, icon: '↩', real: Date.now(), rang: Date.now() };
   renderAlert();
 }
@@ -496,13 +502,15 @@ function tick() {
     tm.power ? powerSoon(tm.power, `${tm.label || 'Timer'} ended`) : notify(`${tm.label || 'Timer'} is done`, 'alarm', [], true);
   }
   if (S.power && t >= S.power.at) {
-    const a = S.power.action;
+    const a = S.power.action, late = t - S.power.at > 2 * MIN; // e.g. the PC was asleep: don't act on an old countdown
     S.power = null;
-    TEST ? notify(`Test: the PC would ${{ sleep: 'go to sleep', shutdown: 'shut down', lock: 'lock' }[a]} now.`, 'remind') : desk?.power(a);
+    if (late) save();
+    else if (TEST) notify(`Test: the PC would ${{ sleep: 'go to sleep', shutdown: 'shut down', lock: 'lock' }[a]} now.`, 'remind');
+    else desk?.power(a);
   }
 
   const awake = inWindow(nowMin(new Date(t)), hm(s.wake), hm(s.bed)), quiet = t < S.quietUntil;
-  const once = (id, ms, fn) => { if (ms !== null && S.fired[id] !== k && t >= ms && t - ms < 30 * MIN) { S.fired[id] = k; fn(); } };
+  const once = (id, ms, fn) => { if (ms !== null && t >= ms && t - ms < 30 * MIN && S.fired[id] !== dk(ms)) { S.fired[id] = dk(ms); save(); fn(); } }; // keyed by the alert's own day, so the wake-up day change can't repeat it
   for (const x of todays()) if (x.time && !isDone(x)) {
     const ms = taskMs(x);
     once('task:' + x.id, ms, () => taskAlert(x));
@@ -532,7 +540,7 @@ function tick() {
     if (!r.on) continue;
     S.last[r.id] ??= t;
     if (t - S.last[r.id] >= r.every * MIN) { S.last[r.id] = t; planKey = ''; nudge(r.text, r.icon || '🔔'); }
-  }
+  } else if (!away) for (const r of S.reminders) S.last[r.id] = Math.floor(t / MIN) * MIN; // night or paused: start counting again, no burst afterwards (whole minutes: the plan redraws once a minute, not every second)
   const atScreen = (t - S.lastBreak) / MIN;
   if (g.screen && awake && !quiet && P.phase === 'focus' && atScreen >= g.screenLimit && t - (S.last.screen || 0) >= 30 * MIN) {
     S.last.screen = t;
@@ -560,7 +568,7 @@ function tick() {
     if (!alert.ring) { alert.until ??= r + 60000; if (r > alert.until) { alert = null; renderAlert(); } }
   }
   S.seen = t;
-  save();
+  if (Date.now() - lastSave > 15000) save(); // the whole state is big; real changes save right away
   render(t);
 }
 
@@ -600,7 +608,8 @@ function plan(t) {
   for (let d = 1; d <= 7; d++) {
     const key = dayKey(addDays(new Date(start), d)), items = [];
     for (const x of S.tasks) if (!x.daily && x.date === key && !isDone(x)) items.push({ ms: taskMs(x), kind: 'task', title: x.title, task: x, day: true });
-    for (const e of S.cal.events.filter(shown)) if (dayKey(e.start) === key) items.push({ ms: e.start, kind: 'event', title: e.title, ev: e, allDay: e.allDay, day: true });
+    // tomorrow's events before wake-up are already in today's list
+    for (const e of S.cal.events.filter(shown)) if (dayKey(e.start) === key && (e.allDay || e.start >= end)) items.push({ ms: e.start, kind: 'event', title: e.title, ev: e, allDay: e.allDay, day: true });
     items.sort((a, b) => (a.allDay ? -1 : a.ms ?? Infinity) - (b.allDay ? -1 : b.ms ?? Infinity));
     if (items.length) days.push([dayLabel(key, keyDate(k), LOC), items]);
   }
@@ -646,10 +655,11 @@ function row(i, t) {
   if (i.rem) acts.append(iconBtn('x', 'Turn off (back on in Settings): ' + i.rem.text, () => { i.rem.on = false; log('Turned off: ' + i.rem.text); changed(); }));
   if (i.timer) acts.append(iconBtn('x', 'Cancel timer: ' + i.title, () => { S.timers = S.timers.filter(y => y !== i.timer); log('Timer cancelled: ' + i.title); changed(); }));
   const color = i.ev && S.cals.find(c => c.name === i.ev.cal)?.color;
+  // task and event names are the user's own words: shown as typed, never translated
   return el('li', { style: color ? '--cal:' + color : '', className: `it ${kind}${i.late ? ' late' : ''}${done ? ' done' : ''}${x?.id === lastAdded || i.timer?.id === lastAdded ? ' new' : ''}` },
     el('time', { textContent: i.allDay ? 'All day' : i.ms ? clockOf(i.ms) : '', dateTime: i.ms && !i.allDay ? new Date(i.ms).toISOString() : '', ariaHidden: i.allDay || i.ms ? null : 'true' }),
     dot,
-    el('div', { className: 'body' }, el('b', { textContent: i.title }), meta.length ? el('small', {}, ...meta.flatMap((m, j) => j ? [' · ', m] : [m])) : ''),
+    el('div', { className: 'body' }, el('b', {}, (x && !x.meal) || i.ev ? document.createTextNode(i.title) : i.title), meta.length ? el('small', {}, ...meta.flatMap((m, j) => j ? [' · ', m] : [m])) : ''),
     acts);
 }
 
@@ -776,6 +786,7 @@ function renderWeek(t) {
 }
 
 function renderRems() {
+  const box = $('settings'), all = () => [...box.querySelectorAll('input, button, select')], at = all().indexOf(document.activeElement);
   $('rems').replaceChildren(...S.reminders.map(r => el('li', {},
     el('label', { className: 'chk' },
       el('span', { className: 'remicon', textContent: r.icon || '🔔', ariaHidden: 'true' }),
@@ -787,6 +798,7 @@ function renderRems() {
   renderCals();
   renderMeals();
   renderLock();
+  if (at >= 0 && !box.contains(document.activeElement)) all()[at]?.focus(); // the list was rebuilt under the cursor
 }
 
 // Meals: pick how many, then name and time each one. Each gets its own reminder (and a cook-or-order one before it).
@@ -795,7 +807,7 @@ function renderMeals() {
   const sorted = [...S.meals].sort((a, b) => since(hm(a.time), hm(S.settings.wake)) - since(hm(b.time), hm(S.settings.wake)));
   $('mealList').replaceChildren(...sorted.map(m => el('li', {},
     el('input', { className: 'bare', value: m.title, ariaLabel: 'Meal name', onchange: e => { m.title = e.target.value.trim() || m.title; changed(); } }),
-    timeField(el('input', { type: 'time', value: m.time, ariaLabel: 'Time of ' + m.title, onchange: e => { if (e.target.value) m.time = e.target.value; changed(); } })),
+    timeField(el('input', { type: 'time', value: m.time, ariaLabel: 'Time of ' + m.title, onchange: e => { m.time = normTime(e.target.value) || m.time; changed(); } })),
     iconBtn('x', 'Remove ' + m.title, () => { S.meals = S.meals.filter(x => x !== m); changed(); }))));
 }
 $('mealCount').onchange = e => {
@@ -847,7 +859,7 @@ function draft() {
   }
   if (!p) return { err: whenTxt ? 'Give it a name' : '' };
   const time = w?.time || p.time, daily = A.daily.checked || p.daily;
-  let date = A.day.dataset.touched ? A.day.value : dayKey(addDays(keyDate(dk()), p.days));
+  let date = A.day.dataset.touched && A.day.value ? A.day.value : dayKey(addDays(keyDate(dk()), p.days));
   if (!A.day.dataset.touched && !daily && time && date === dk() && dailyMs(time) <= t) date = dayKey(addDays(keyDate(dk()), 1)); // already passed: tomorrow
   const task = { id: crypto.randomUUID(), title: p.title, time, daily, date, alarm: A.alarm.checked && !!time, lead: +A.lead.value };
   const when = tr(daily ? 'Every day' : dayLabel(date, keyDate(dk()), LOC)) + (time ? (LANG === 'tr' ? ' ' : ' at ') + time : '');
@@ -976,7 +988,7 @@ for (const inp of document.querySelectorAll('[data-s],[data-g]')) {
   inp[prop] = obj[k];
   inp.onchange = () => {
     const num = inp.type === 'number' || inp.type === 'range' || (inp.tagName === 'SELECT' && /^\d+$/.test(inp.value));
-    const v = inp.type === 'checkbox' ? inp.checked : num ? parseFloat(inp.value) : inp.value;
+    const v = inp.type === 'checkbox' ? inp.checked : num ? parseFloat(inp.value) : inp.classList.contains('tval') ? normTime(inp.value) ?? '' : inp.value;
     if ((v === '' && inp.tagName !== 'TEXTAREA') || Number.isNaN(v) || (inp.type === 'number' && v < +inp.min)) return (inp[prop] = obj[k]);
     obj[k] = v;
     if (k === 'login') desk?.login(v);
