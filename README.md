@@ -12,20 +12,30 @@
 
 **İşinizin yanında sakin bir ışık.** Bilgisayarı açtığınız andan kapatana kadar açık kalan, Windows için sakin, küçük bir yan uygulama. Gününüzün **şimdi** ve **sırada** olanını gösterir, geride kalanı değil.
 
+**İşiniz iyi kazandırıyor. Peki bedeniniz karşılığını alıyor mu?** Dijitalde çalışıyor, belki ayda binlerce dolar kazanıyorsunuz. Bu arada su bardağı dolu duruyor, gözleriniz öğleden beri ekrandan ayrılmadı ve saat 19:00 olduğunda omuzlarınız tutulmuş. Lumina sağlığınızı işinizle aynı ekranda tutar: su, duruş, göz molası ve yürüyüş kendiliğinden hatırlatılır, akşam ekran sıcak bir renge döner, yatma saati gelince nazikçe haber verir.
+
+**Bütün iş günü için tek uygulama.** Odak zamanlayıcısı, yapılacaklar listesi, takvim, toplantı notları ve gece ışığı arasında gidip gelmeye gerek yok; hepsi tek, sakin bir zaman çizelgesinde.
+
 - **Tek zaman çizelgesi**: görevler, öğünler, takvim etkinlikleri, mola hatırlatmaları, zamanlayıcılar, gece ışığı ve yatma saati, saat sırasıyla.
 - **Kendiliğinden süren odak**: odak ve kısa molalar gün boyu kendi kendine döner; bilgisayardan kalkınca odak durur ve mola sayılır.
-- **Takvimler**: Google veya Outlook iCal bağlantılarını ekleyin, her birine ad, uyarı süresi verin ya da gizleyin. Meet, Zoom, Teams, Webex ve Whereby toplantılarında 15 dakika önce **Katıl** düğmesi çıkar.
+- **Takvimler**: Google veya Outlook iCal bağlantılarını ekleyin, her birine ad, uyarı süresi verin ya da gizleyin. Meet, Zoom, Teams, Webex ve Whereby toplantılarında 15 dakika önce **Katıl** düğmesi çıkar. Gizli iCal adresi yoksa (bazı iş hesapları gizler) Google'ın dışa aktarma **.zip** dosyasını ya da bir **.ics** dosyasını doğrudan içe aktarın.
+- **Toplantı notları**: notu doğrudan toplantının üzerine alın; geçmiş notlar 90 gün kalır ve kopyalanabilir.
+- **Görevler**: her görev için ön uyarı (5 dakikadan 1 saate) ve isterseniz **Google Takvim'e de ekleme** (Google'ın etkinlik sayfası dolu açılır, Kaydet'e basarsınız).
 - **Odak kilidi**: odak sırasında yalnızca seçtiğiniz uygulamalar ve sekmeler açık kalır; toplantı sırasında kilit kenara çekilir.
 - **Hatırlatmalar, alışkanlıklar, öğünler, alarmlar**: su, duruş, yürüyüş, göz molası; günlük alışkanlık serileri; istediğiniz kadar öğün.
-- **Akşam**: gece ışığı, uyku hatırlatması ve film için **uyku zamanlayıcısı** (iptal için her zaman 60 saniye).
-- **Köşe widget'ı**: Lumina'yı küçültünce her zaman üstte duran küçük bir hap; zamanlayıcıyı ve sıradakini gösterir.
+- **Akşam**: sıcaklığı ve karartması ayarlanabilen gece ışığı, uyku hatırlatması ve film için **uyku zamanlayıcısı** (iptal için her zaman 60 saniye).
+- **Köşe widget'ı**: Lumina'yı küçültünce her zaman üstte duran küçük bir hap; zamanlayıcıyı ve sıradakini gösterir. Ayarlar'dan köşesini seçin ya da **görev çubuğuna** sürükleyip bırakın: görev çubuğunun rengini alır, 5 saniye sonra nokta ve süreye küçülür, fare gelince yeniden açılır.
 - **Ekleme**: **+** (veya N), ad ve saat (`14:30`) ya da süre (`20m`) yazın.
 
-Her şey yalnızca bilgisayarınızda saklanır. Arayüz şimdilik İngilizce.
+Arayüz Türkçe ve İngilizce (Ayarlar → Uygulama → Dil; varsayılan olarak Windows'un dili). Görev eklerken Türkçe de yazabilirsiniz: `yarın 9:00 Dişçi`, `Vitamin her gün`, `20dk çay`. Her şey yalnızca bilgisayarınızda saklanır; güncellemeden sonra takvimleri ve ayarları yeniden eklemeniz gerekmez.
 
 ## English
 
 **A quiet light beside your work.** A calm little side app for Windows that stays open from the moment you start your PC until you shut it down. It keeps what matters **now** and **next** in view, and nothing behind you.
+
+**Your work pays well. Is your body getting paid back?** You work on a screen, maybe earning thousands of dollars a month. Meanwhile the water glass stays full, your eyes haven't left the monitor since lunch, and it's 7 pm with stiff shoulders. Lumina keeps your health in the same view as your work: water, posture, eyes and a walk come by on their own, the screen turns warm in the evening, and bedtime gets a gentle nudge.
+
+**One app for the whole workday.** No juggling a focus timer, a to-do list, a calendar, a notes app and a night-light tool: it's all in one quiet timeline.
 
 **Who it's for:** people who spend the whole day at a PC: developers, designers, writers. In flow, the rest of the day disappears: the meeting slips by, the water glass stays full, and it's 7 pm with stiff shoulders. Lumina sits in the corner and keeps the day in view so you can stay deep in the work. First launch shows a short intro (later: Settings → About Lumina).
 
@@ -38,11 +48,15 @@ Her şey yalnızca bilgisayarınızda saklanır. Arayüz şimdilik İngilizce.
 - **Undo and restore**: removing a task or an event shows an Undo for a moment. Removed calendar events can also be brought back any time: Settings → Calendars → *Restore N removed*.
 - **Focus lock**: pick the apps and tabs you work in (e.g. `chrome`, `code`, or a word from a tab title like `github`). While focus runs, anything else (File Explorer included) gets covered on every monitor until you switch back. The cover offers *Allow 5 min*, *Always allow this app* and *Pause focus*; the taskbar always stays free. During a calendar meeting the lock steps aside (you'll be in Zoom or Teams); switch that off in Settings if you like. Desktop only.
 - **Habits**: make anything daily (vitamins, pills, reading) and see streaks and your week.
-- **Calendars**: add as many iCal links as you like (Google, Outlook), each with a name such as Work or Family. Time zones, "2nd Tuesday"-style monthly events and moved or cancelled occurrences are handled. Paste Google's or Outlook's page link by mistake and Lumina turns it into the calendar link when it can. Click a calendar's name to rename it, pick its heads-up (none, at the start, or 5 to 30 minutes before) or hide it from the timeline without removing it. Meetings with a Google Meet, Zoom, Teams, Webex or Whereby link get a **Join** button 15 minutes before, and in the heads-up alert. If a link stops working, Lumina says why (reset, private, a web page instead of a calendar, or offline).
+- **Calendars**: add as many iCal links as you like (Google, Outlook), each with a name such as Work or Family. Time zones, "2nd Tuesday"-style monthly events and moved or cancelled occurrences are handled. Paste Google's or Outlook's page link by mistake and Lumina turns it into the calendar link when it can. Click a calendar's name to rename it, pick its heads-up (none, at the start, or 5 to 30 minutes before) or hide it from the timeline without removing it. Meetings with a Google Meet, Zoom, Teams, Webex or Whereby link get a **Join** button 15 minutes before, and in the heads-up alert. If a link stops working, Lumina says why (reset, private, a web page instead of a calendar, or offline). **No secret address** (some work accounts hide it)? Import Google's export **.zip** (Settings → Import & export → Export) or any **.ics** file instead; importing a newer export refreshes it.
+- **Meeting notes**: a notes button on every meeting (and in its alert). Notes stay 90 days under *Meeting notes* and copy in one click.
+- **Task heads-up and Google Calendar**: pick a heads-up per task (5 min to 1 h, default in Settings → My day), and optionally send the task to Google Calendar: its new-event page opens filled in, you press Save.
 - **Alarms and timers**: type a name and a time ("9:00" or "20m"), pick Today or Tomorrow, done. A task shows "now" when due and "missed" only after 5 minutes without a tick.
-- **Evening**: warm night light (Lumina's tint, Windows' own Night light, or both), a nudge to sleep, an optional shutdown at a set time, and a **sleep timer** (the moon button, which always asks first): after the time you set in Settings (e.g. 90 min for a movie) the PC sleeps, shuts down or locks. You always get 60 seconds to cancel.
+- **Evening**: warm night light (Lumina's tint with warmth and dim sliders, Windows' own Night light, or both), a nudge to sleep, an optional shutdown at a set time, and a **sleep timer** (the moon button, which always asks first): after the time you set in Settings (e.g. 90 min for a movie) the PC sleeps, shuts down or locks. You always get 60 seconds to cancel.
 - **Sounds**: soft bells with a volume slider (Settings → App); every sound peaks at about the same level.
-- **Corner widget**: minimize Lumina and a small always-on-top pill shows the timer and what's next. Alerts pop up there while you work in other apps.
+- **Corner widget**: minimize Lumina and a small always-on-top pill shows the timer and what's next. Alerts pop up there while you work in other apps. Pick its corner in Settings, or drag it onto the taskbar: it takes the taskbar's own tone with soft edges, folds down to the dot and the timer after 5 seconds, and opens up again when the mouse comes by.
+- **Languages**: English and Turkish (Settings → App → Language; follows Windows by default). Turkish input works too: `yarın 9:00 Dişçi`, `Vitamin her gün`, `20dk çay`.
+- **Updates keep everything**: your data is also mirrored to `%APPDATA%\Lumina\lumina-data.json`, so a new version, a reinstall or cleared app storage never means adding calendars again.
 
 ## Add anything
 

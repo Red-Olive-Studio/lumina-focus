@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hm, since, inWindow, nextPhase, fmt, parseAdd, parseWhen, streak, dayLabel, dur, until, calEvents, byDay, joinLink, icsUrl, hhmm, resizeMeals, allowedWin } from '../web/logic.js';
+import { hm, since, inWindow, nextPhase, fmt, parseAdd, parseWhen, streak, dayLabel, dur, until, calEvents, byDay, joinLink, icsUrl, hhmm, resizeMeals, allowedWin, pruneIcs, unzip, gcalLink, normTime, soon } from '../web/logic.js';
 
 test('day window wraps past midnight', () => {
   assert.equal(since(hm('00:10'), hm('23:30')), 40);
@@ -192,4 +192,65 @@ test('parser and helper edge cases', () => {
   assert.equal(hhmm(-30), '23:30');
   assert.ok(resizeMeals([], 7, 'bad', 'bad').every(m => /^\d\d:\d\d$/.test(m.time)));
   assert.equal(allowedWin({ title: 'x' }, ['chrome']), true); // no process name: shell-like, never locked
+});
+
+test('Turkish input', () => {
+  assert.deepEqual(parseWhen('20dk'), { min: 20 });
+  assert.deepEqual(parseWhen('1 sa'), { min: 60 });
+  assert.deepEqual(parseAdd('yarın 9:00 Dişçi', TUE), { time: '09:00', title: 'Dişçi', daily: false, days: 1 });
+  assert.deepEqual(parseAdd('Spor cuma 18:00', TUE), { time: '18:00', title: 'Spor', daily: false, days: 3 });
+  assert.deepEqual(parseAdd('Vitamin 9:00 her gün', TUE), { time: '09:00', title: 'Vitamin', daily: true, days: 0 });
+  assert.equal(parseAdd('20dk çay', TUE).min, 20);
+  assert.equal(parseAdd('Salı toplantı', TUE).title, 'toplantı'); // salı = Tuesday = today
+});
+
+const ICS = ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'DTSTART:20200105T090000Z', 'DTEND:20200105T100000Z', 'SUMMARY:Old', 'END:VEVENT',
+  'BEGIN:VEVENT', 'DTSTART;TZID=Europe/Istanbul:20200106T090000', 'RRULE:FREQ=WEEKLY', 'SUMMARY:Weekly', 'END:VEVENT',
+  'BEGIN:VEVENT', 'DTSTART:20261111T090000Z', 'DTEND:20261111T100000Z', 'SUMMARY:Soon', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+
+test('pruneIcs keeps only what can still show up', () => {
+  const out = pruneIcs(ICS, TUE);
+  assert.ok(!out.includes('Old') && out.includes('Weekly') && out.includes('Soon'));
+  assert.deepEqual(calEvents(out, +TUE, +TUE + 7 * 864e5).map(e => e.title), ['Soon', 'Weekly']);
+});
+
+test('unzip reads the .ics files of a calendar export', async () => {
+  const { deflateRawSync } = await import('node:zlib');
+  const files = [['me@example.com.ics', ICS, 8], ['readme.txt', 'x', 0], ['Team.ics', 'BEGIN:VCALENDAR', 0]];
+  const local = [], central = [];
+  let off = 0;
+  for (const [name, text, method] of files) {
+    const n = Buffer.from(name), raw = Buffer.from(text), data = method ? deflateRawSync(raw) : raw;
+    const h = Buffer.alloc(30); h.writeUInt32LE(0x04034b50, 0); h.writeUInt16LE(method, 8); h.writeUInt32LE(data.length, 18); h.writeUInt32LE(raw.length, 22); h.writeUInt16LE(n.length, 26);
+    const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(method, 10); c.writeUInt32LE(data.length, 20); c.writeUInt32LE(raw.length, 24); c.writeUInt16LE(n.length, 28); c.writeUInt32LE(off, 42);
+    local.push(h, n, data); central.push(c, n); off += 30 + n.length + data.length;
+  }
+  const cd = Buffer.concat(central), end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(off, 16);
+  const got = await unzip(Buffer.concat([...local, cd, end]));
+  assert.deepEqual(got.map(f => f.name), ['me@example.com.ics', 'Team.ics']);
+  assert.equal(got[0].text, ICS);
+  await assert.rejects(unzip(Buffer.from('not a zip at all, definitely not')));
+});
+
+test('Google Calendar link', () => {
+  const u = new URL(gcalLink({ title: 'Call & mom', date: '2026-11-10', time: '14:30', daily: false }));
+  const start = new Date(2026, 10, 10, 14, 30);
+  assert.equal(u.searchParams.get('text'), 'Call & mom');
+  assert.equal(u.searchParams.get('dates'), [start, new Date(+start + 30 * 60000)].map(d => d.toISOString().replace(/[-:]|\.\d{3}/g, '')).join('/'));
+  const all = new URL(gcalLink({ title: 'Read', date: '2026-12-31', time: '', daily: true }));
+  assert.equal(all.searchParams.get('dates'), '20261231/20270101');
+  assert.equal(all.searchParams.get('recur'), 'RRULE:FREQ=DAILY');
+});
+
+test('normTime: what people type into a time box', () => {
+  for (const [i, o] of [['7', '07:00'], ['730', '07:30'], ['0730', '07:30'], ['7:30', '07:30'], ['7.30', '07:30'], ['19 45', '19:45'], ['7pm', '19:00'], ['12am', '00:00'], [' 23:59 ', '23:59']]) assert.equal(normTime(i), o, i);
+  for (const i of ['', '24', '7:60', '25:00', 'abc', '12345', '13pm']) assert.equal(normTime(i), null, i);
+});
+
+test('soon: the widget\'s short countdown', () => {
+  assert.equal(soon(30e3), 'now');
+  assert.equal(soon(13 * 6e4), '13m');
+  assert.equal(soon(59 * 6e4), '59m');
+  assert.equal(soon(100 * 6e4), '2h');
 });

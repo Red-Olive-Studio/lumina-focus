@@ -14,4 +14,6 @@ contextBridge.exposeInMainWorld('desk', {
   ics: url => ipcRenderer.invoke('ics', url),
   windows: () => ipcRenderer.invoke('windows'),
   link: send('link'), // meeting "Join" links open in the default browser
+  pipAt: send('pipAt'), onSlim: on('slim'), // corner widget: a corner or docked on the taskbar
+  backup: send('backup'), restore: () => ipcRenderer.sendSync('restore'), // saved data mirrored to a file on disk
 });

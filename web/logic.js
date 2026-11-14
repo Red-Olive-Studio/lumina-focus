@@ -6,11 +6,11 @@ export const keyDate = k => { const [y, m, d] = k.split('-').map(Number); return
 export const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 
 // "Today", "Tomorrow", "Friday" (this week) or "Fri 20 Nov".
-export function dayLabel(key, now) {
+export function dayLabel(key, now, loc = 'en-GB') {
   const day = keyDate(key), diff = Math.round((day - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
   if (diff === 0) return 'Today';
   if (diff === 1) return 'Tomorrow';
-  return day.toLocaleDateString('en-GB', diff > 0 && diff < 7 ? { weekday: 'long' } : { weekday: 'short', day: 'numeric', month: 'short' });
+  return day.toLocaleDateString(loc, diff > 0 && diff < 7 ? { weekday: 'long' } : { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 // Minutes from `from` to `m`, wrapping past midnight (bedtime can be after 00:00).
@@ -34,41 +34,49 @@ function clock(h, mm = '0', ap) {
   return h < 24 && mm < 60 ? hhmm(h * 60 + mm) : null;
 }
 
-// The "when" field: "14:30", "9am", "2.30pm" = a time; "20m", "1.5h", "1h30", "90" = a timer length.
+// What people type into a time box: 7, 730, 0730, 7:30, 7.30, 19 45, 7pm -> 'HH:MM', or null.
+export function normTime(s) {
+  const m = String(s).trim().match(/^(\d{1,2})(?:[:.\s]?(\d{2}))?\s*(am|pm)?$/i);
+  return m ? clock(m[1], m[2] ?? '0', m[3]) : null;
+}
+// The "when" field: "14:30", "9am", "2.30pm" = a time; "20m", "1.5h", "1h30", "90", "20dk", "1sa" = a timer length.
 export function parseWhen(s) {
   s = s.trim().toLowerCase();
   let m;
   if ((m = s.match(/^(\d{1,2})(?:[:.](\d{2}))? ?(am|pm)?$/)) && (m[2] || m[3])) { const t = clock(m[1], m[2], m[3]); return t && { time: t }; }
   if ((m = s.match(/^(\d{1,2}) ?h ?(\d{1,2}) ?m?$/))) return { min: +m[1] * 60 + +m[2] };
-  if ((m = s.match(/^(\d+(?:[.,]\d+)?) ?(m|mins?|minutes?|h|hrs?|hours?)?$/))) {
-    const n = +m[1].replace(',', '.') * (m[2]?.startsWith('h') ? 60 : 1);
+  if ((m = s.match(/^(\d+(?:[.,]\d+)?) ?(m|mins?|minutes?|h|hrs?|hours?|dk|dakika|sa|saat)?$/))) {
+    const n = +m[1].replace(',', '.') * (/^(h|sa)/.test(m[2]) ? 60 : 1);
     return n > 0 && n <= 7 * 1440 ? { min: n } : null; // up to a week
   }
   return null;
 }
 
 const WEEK = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const HAFTA = ['pazar', 'pazartesi', 'salı', 'çarşamba', 'perşembe', 'cuma', 'cumartesi']; // Turkish, same order
 function dayOff(w, now) {
-  w = w.toLowerCase();
-  if (w === 'today') return 0;
-  if (/^(tomorrow|tmrw?)$/.test(w)) return 1;
-  const i = WEEK.findIndex(d => w.length >= 3 && d.startsWith(w));
+  w = w.toLocaleLowerCase('tr');
+  if (/^(today|bugün)$/.test(w)) return 0;
+  if (/^(tomorrow|tmrw?|yarın|yarin)$/.test(w)) return 1;
+  let i = WEEK.findIndex(d => w.length >= 3 && d.startsWith(w));
+  if (i < 0) i = HAFTA.findIndex(d => w.length >= 3 && d.startsWith(w));
   return i < 0 ? null : (i - now.getDay() + 7) % 7;
 }
 
 // Typing it all in the name works too: "14:30 Call mom", "tomorrow 9am Dentist", "Gym fri 6pm",
-// "9am Vitamins daily", "20m tea" (timer), "Read" (to-do). `days` = days from today.
+// "9am Vitamins daily", "20m tea" (timer), "Read" (to-do), and in Turkish "yarın 9:00 Dişçi", "Vitamin her gün".
+// `days` = days from today.
 export function parseAdd(text, now = new Date()) {
   let s = text.trim().replace(/\s+/g, ' '), daily = false, days = null, m, d, time = '';
-  if ((m = s.match(/ (daily|every ?day)$/i))) { daily = true; s = s.slice(0, m.index); }
-  if ((m = s.match(/^(\d+(?:\.\d+)?) ?(m|mins?|minutes?|h|hrs?|hours?)\b ?(.*)$/i)))
-    return +m[1] > 0 ? { timer: true, min: +m[1] * (/^h/i.test(m[2]) ? 60 : 1), label: m[3] } : null;
-  if ((m = s.match(/^(?:on )?([a-z]+) (.+)$/i)) && (d = dayOff(m[1], now)) !== null) { days = d; s = m[2]; }
+  if ((m = s.match(/ (daily|every ?day|her ?gün)$/i))) { daily = true; s = s.slice(0, m.index); }
+  if ((m = s.match(/^(\d+(?:\.\d+)?) ?(m|mins?|minutes?|h|hrs?|hours?|dk|dakika|sa|saat)(?!\p{L}) ?(.*)$/iu)))
+    return +m[1] > 0 ? { timer: true, min: +m[1] * (/^(h|sa)/i.test(m[2]) ? 60 : 1), label: m[3] } : null;
+  if ((m = s.match(/^(?:on )?(\p{L}+) (.+)$/iu)) && (d = dayOff(m[1], now)) !== null) { days = d; s = m[2]; }
   const T = '(\\d{1,2})(?::(\\d{2}))? ?(am|pm)?';
   let t;
   if ((m = s.match(new RegExp(`^${T} (.+)$`, 'i'))) && (m[2] || m[3]) && (t = clock(m[1], m[2], m[3]))) [time, s] = [t, m[4]];
   else if ((m = s.match(new RegExp(`^(.+?) (?:at )?${T}$`, 'i'))) && (m[3] || m[4]) && (t = clock(m[2], m[3], m[4]))) [time, s] = [t, m[1]];
-  if (days === null && (m = s.match(/ (?:on )?([a-z]+)$/i)) && (d = dayOff(m[1], now)) !== null) { days = d; s = s.slice(0, m.index); }
+  if (days === null && (m = s.match(/ (?:on )?(\p{L}+)$/iu)) && (d = dayOff(m[1], now)) !== null) { days = d; s = s.slice(0, m.index); }
   if (!time && (m = s.match(new RegExp(`^${T}$`, 'i'))) && (m[2] || m[3]) && clock(m[1], m[2], m[3])) return null; // "9am" alone is a time, not a name
   return s ?{ time, title: s, daily, days: daily ? 0 : days ?? 0 } : null;
 }
@@ -90,6 +98,8 @@ export function fmt(sec) {
 // "45m", "1h 05m"
 export const dur = sec => { const m = Math.floor(sec / 60); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`; };
 // "now", "in 12 min", "in 2h 05m"
+// The narrow corner widget: '13m', '2h' (rounded), 'now'.
+export const soon = ms => ms < 6e4 ? 'now' : ms < 36e5 ? `${Math.round(ms / 6e4)}m` : `${Math.round(ms / 36e5)}h`;
 export const until = (ms, now) => { const s = (ms - now) / 1000; return s < 60 ? 'now' : s < 3600 ? `in ${Math.round(s / 60)} min` : `in ${dur(s)}`; };
 
 // ---- calendar: read an iCal (.ics) feed, e.g. Google's "secret address in iCal format" ----
@@ -212,6 +222,44 @@ export function calEvents(text, from, to) {
     }
   }
   return out.sort((a, b) => a.start - b.start);
+}
+
+// An exported calendar file (Google: Settings → Import & export → Export) holds years of past events.
+// Keep only what can still show up: repeating events, and ones that end on or after `from`.
+export function pruneIcs(text, from) {
+  const cut = +dayKey(from).replace(/-/g, '');
+  const evs = text.replace(/\r\n?/g, '\n').match(/^BEGIN:VEVENT$[\s\S]*?^END:VEVENT$/gim) || [];
+  const keep = evs.filter(e => /^RRULE[;:]/im.test(e) || Math.max(...[...e.matchAll(/^DT(?:START|END)[^:\n]*:(\d{8})/gim)].map(m => +m[1])) >= cut);
+  return `BEGIN:VCALENDAR\n${keep.join('\n')}\nEND:VCALENDAR\n`;
+}
+
+// The .ics files inside a .zip (Google's calendar export is a zip with one .ics per calendar).
+// shortcut: no zip64 or encryption; a calendar export never needs them.
+export async function unzip(buf) {
+  const b = new Uint8Array(buf), v = new DataView(b.buffer, b.byteOffset, b.byteLength), out = [];
+  let e = b.length - 22;
+  while (e >= 0 && v.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('Not a zip file');
+  for (let i = 0, p = v.getUint32(e + 16, true); i < v.getUint16(e + 10, true); i++) {
+    const method = v.getUint16(p + 10, true), size = v.getUint32(p + 20, true), n = v.getUint16(p + 28, true), loc = v.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(b.subarray(p + 46, p + 46 + n));
+    p += 46 + n + v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
+    if (!/\.ics$/i.test(name) || (method !== 0 && method !== 8)) continue;
+    const at = loc + 30 + v.getUint16(loc + 26, true) + v.getUint16(loc + 28, true), data = b.slice(at, at + size);
+    const body = method ? new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')) : data;
+    out.push({ name: name.split('/').pop(), text: await new Response(body).text() });
+  }
+  return out;
+}
+
+// Google Calendar's own "new event" page, filled in: no sign-in or API key here, the user presses Save there.
+// A task with a time becomes a 30-minute event, a to-do an all-day one; a daily one repeats.
+export function gcalLink({ title, date, time, daily }) {
+  const [y, mo, d] = date.split('-').map(Number), utc = ms => new Date(ms).toISOString().replace(/[-:]|\.\d{3}/g, '');
+  const at = time && +new Date(y, mo - 1, d, ...time.split(':').map(Number));
+  const dates = time ? `${utc(at)}/${utc(at + 30 * 60000)}`
+    : `${date.replace(/-/g, '')}/${dayKey(new Date(y, mo - 1, d + 1)).replace(/-/g, '')}`;
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(title) + '&dates=' + dates + (daily ? '&recur=' + encodeURIComponent('RRULE:FREQ=DAILY') : '');
 }
 
 // The video-call link in an event (Meet, Zoom, Teams, Webex, Whereby), so "Join" is one click.

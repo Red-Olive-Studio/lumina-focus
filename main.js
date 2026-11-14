@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, powerMonitor, net, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, powerMonitor, net, shell, nativeTheme } = require('electron');
 const { execFile, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -46,8 +46,9 @@ function syncPip() {
   else if (!want && pip.isVisible()) pip.hide();
 }
 
+const PIP = { w: 380, h: 72 };
 function createPip() {
-  const w = 380, h = 72, a = screen.getPrimaryDisplay().workArea;
+  const w = PIP.w, h = PIP.h, a = screen.getPrimaryDisplay().workArea;
   const at = saved.pip && onScreen({ ...saved.pip, width: w, height: h }) ? saved.pip : { x: a.x + a.width - w - 8, y: a.y + a.height - h - 8 };
   pip = new BrowserWindow({
     x: at.x, y: at.y, width: w, height: h, frame: false, transparent: true, resizable: false, maximizable: false,
@@ -56,28 +57,93 @@ function createPip() {
   });
   pip.setAlwaysOnTop(true, 'floating');
   pip.loadFile(web('mini.html'));
-  pip.on('moved', () => remember('pip', pip));
+  pip.webContents.on('did-finish-load', sendSlim);
+  if (saved.pipDock) placePip('taskbar', saved.pip?.x);
+  // Dropped onto the taskbar: it docks there as one slim line. Dragged back up: a normal pill again.
+  pip.on('moved', () => {
+    const p = pip.getBounds(), a = screen.getDisplayMatching(p).workArea, low = p.y + p.height / 2 > a.y + a.height;
+    if (low && (!saved.pipDock || p.y !== a.y + a.height)) tellPip(placePip('taskbar', p.x));
+    else if (!low && saved.pipDock) {
+      setSlim(false);
+      pip.setBounds({ x: Math.min(p.x, a.x + a.width - PIP.w), y: Math.min(p.y, a.y + a.height - PIP.h - 8), width: PIP.w, height: PIP.h });
+      tellPip('');
+    }
+    remember('pip', pip);
+  });
   pip.on('close', e => { if (!quitting) { e.preventDefault(); showMain(); } }); // Alt+F4 on the widget opens Lumina
 }
 
-// Warm tint: one click-through overlay per display.
-function setTint(on) {
-  if (!on) { tints.forEach(t => t.destroy()); tints = []; return; }
-  if (tints.length) return;
-  tints = screen.getAllDisplays().map(d => {
+// Docked: over the taskbar (itself always on top), in its light or dark tone, folded to the dot and the time when the mouse is away.
+let small = false, lightBar = false, awayAt = 0;
+const sendSlim = () => pip.webContents.send('slim', { dock: !!saved.pipDock, small, light: lightBar });
+const setSlim = on => { saved.pipDock = on; small = false; awayAt = Date.now(); pip.setAlwaysOnTop(true, on ? 'screen-saver' : 'floating'); readBar(); sendSlim(); };
+// shortcut: only the light/dark taskbar tone; an accent-coloured taskbar (Settings → Colours) gets the dark one.
+function readBar() {
+  execFile('reg', ['query', String.raw`HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, '/v', 'SystemUsesLightTheme'], { windowsHide: true }, (err, out) => {
+    const l = !err && /0x1\s*$/m.test(out);
+    if (l !== lightBar) { lightBar = l; if (pip && !pip.isDestroyed()) sendSlim(); }
+  });
+}
+const SMALL_W = 116, FOLD_MS = 5000;
+// Polled rather than DOM hover: most of the pill is a drag area, which gets no mouse events.
+setInterval(() => {
+  if (!pip || pip.isDestroyed() || !saved.pipDock || !pip.isVisible()) return;
+  const c = screen.getCursorScreenPoint(), b = pip.getBounds(), inside = c.x >= b.x && c.x < b.x + b.width && c.y >= b.y && c.y < b.y + b.height;
+  if (inside || alerting) awayAt = Date.now();
+  const want = Date.now() - awayAt > FOLD_MS;
+  if (want === small) return;
+  small = want;
+  // Unfold to the left when there's no room on the right; fold back to the same spot.
+  const d = screen.getDisplayMatching(b).bounds, w = small ? SMALL_W : PIP.w;
+  const x = small ? (b.x + b.width >= d.x + d.width - 1 ? d.x + d.width - w : b.x) : Math.min(b.x, d.x + d.width - w);
+  pip.setBounds({ x, y: b.y, width: w, height: b.height });
+  sendSlim();
+}, 250);
+const tellPip = where => win?.webContents.send('cmd', 'pip:' + where); // Settings shows where the widget is
+// A corner of the screen the widget is on, or the taskbar: as tall as the taskbar, near its right end or where it was dropped.
+// shortcut: only a taskbar along the bottom; a side or auto-hidden one gets the bottom-right corner instead.
+function placePip(where, x) {
+  const d = screen.getDisplayMatching(pip.getBounds()), a = d.workArea, b = d.bounds, bar = b.y + b.height - (a.y + a.height);
+  if (where === 'taskbar' && bar < 24) where = 'br';
+  const dock = where === 'taskbar', w = PIP.w, h = dock ? bar : PIP.h;
+  setSlim(dock);
+  pip.setBounds({
+    width: w, height: h,
+    x: dock ? Math.min(Math.max(x ?? a.x + a.width - w - 300, b.x), b.x + b.width - w) : where[1] === 'l' ? a.x + 8 : a.x + a.width - w - 8,
+    y: dock ? a.y + a.height : where[0] === 't' ? a.y + 8 : a.y + a.height - h - 8,
+  });
+  remember('pip', pip);
+  return where;
+}
+ipcMain.on('pipAt', (e, where) => {
+  if (e.sender !== win.webContents || !/^(tl|tr|bl|br|taskbar)$/.test(where)) return;
+  tellPip(placePip(where));
+  pip.showInactive(); // show it there for a moment
+  setTimeout(syncPip, 3000);
+});
+
+// Night light: one click-through overlay per display, warm (warm 0-100) and optionally dimmed (dim 0-100).
+let tintLv = null;
+function setTint(lv) {
+  tintLv = lv;
+  if (!lv) { tints.forEach(t => t.destroy()); tints = []; return; }
+  const w = Math.min(.5, Math.max(0, +lv.warm / 100 || 0)), k = Math.min(.6, Math.max(0, +lv.dim / 100 || 0));
+  const url = 'data:text/html,' + encodeURIComponent(`<body style="margin:0;background:linear-gradient(rgba(0,0,0,${k}),rgba(0,0,0,${k})),rgba(255,120,0,${w})">`);
+  if (!tints.length) tints = screen.getAllDisplays().map(d => {
     const t = new BrowserWindow({
       ...d.bounds, frame: false, transparent: true, focusable: false,
       skipTaskbar: true, resizable: false, hasShadow: false, alwaysOnTop: true,
     });
     t.setAlwaysOnTop(true, 'screen-saver');
     t.setIgnoreMouseEvents(true);
-    t.loadURL('data:text/html,<body style="margin:0;background:rgba(255,120,0,.16)">');
     return t;
   });
+  for (const t of tints) t.loadURL(url);
 }
 // A monitor plugged in or out: rebuild the overlays for the new layout.
 function displaysChanged() {
-  if (tints.length) { setTint(false); setTint(true); }
+  if (tints.length) { const lv = tintLv; setTint(null); setTint(lv); }
+  if (saved.pipDock) placePip('taskbar', pip.getBounds().x);
   covers.forEach(c => c.destroy()); covers = [];
   if (lockState) showCovers(lockState);
 }
@@ -95,6 +161,7 @@ app.whenReady().then(() => {
   win.on('closed', () => app.quit());
   createPip();
   for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, displaysChanged);
+  nativeTheme.on('updated', readBar); // Windows switched light/dark
 });
 
 app.on('second-instance', () => win && showMain());
@@ -114,10 +181,10 @@ ipcMain.on('link', (_, u) => { try { if (new URL(u).protocol === 'https:') shell
 ipcMain.on('mini', () => win.minimize());
 ipcMain.on('close', () => app.quit());
 ipcMain.on('flash', () => { if (!win.isFocused()) win.flashFrame(true); });
-ipcMain.on('tint', (_, on) => setTint(!!on));
+ipcMain.on('tint', (_, lv) => setTint(lv && typeof lv === 'object' ? lv : lv ? { warm: 16, dim: 0 } : null));
 // The portable exe unpacks to a temp folder each run; register the exe itself.
-ipcMain.on('login', (_, on) => app.setLoginItemSettings({ openAtLogin: !!on, path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath }));
-// The page already gave the user 60 seconds to cancel, so these act right away.
+// Only the packaged app: from `npm start` it would register a bare electron.exe.
+ipcMain.on('login', (_, on) => app.isPackaged && app.setLoginItemSettings({ openAtLogin: !!on, path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath }));// The page already gave the user 60 seconds to cancel, so these act right away.
 const POWER = {
   shutdown: ['shutdown', ['/s', '/t', '0']],
   sleep: ['rundll32.exe', ['powrprof.dll,SetSuspendState', '0,1,0']], // hibernates instead if hibernation is on
@@ -125,6 +192,13 @@ const POWER = {
 };
 ipcMain.on('power', (e, a) => { if (!TEST && POWER[a] && e.sender === win?.webContents) execFile(...POWER[a], () => {}); }); // only the main window may sleep or shut down the PC
 ipcMain.handle('idle', () => powerMonitor.getSystemIdleTime());
+// A copy of the page's saved data on disk, so an update, a reinstall or cleared app storage never loses calendars and settings.
+const backupFile = path.join(dir, 'lumina-data.json');
+ipcMain.on('backup', (e, data) => {
+  if (e.sender !== win?.webContents || typeof data !== 'string' || data.length < 3) return;
+  fs.writeFile(backupFile + '.tmp', data, err => { if (!err) fs.rename(backupFile + '.tmp', backupFile, () => {}); }); // never a half-written copy
+});
+ipcMain.on('restore', e => { try { e.returnValue = e.sender === win?.webContents ? fs.readFileSync(backupFile, 'utf8') : ''; } catch { e.returnValue = ''; } });
 
 // ---- focus lock: report the window in front; the page decides, and this shows or hides the cover ----
 const ps = (script, cb) => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding=[Text.Encoding]::UTF8;' + script], { windowsHide: true, maxBuffer: 1 << 20 }, cb);

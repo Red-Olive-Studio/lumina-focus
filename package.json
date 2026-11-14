@@ -1,7 +1,7 @@
 {
   "name": "lumina",
   "productName": "Lumina",
-  "version": "0.8.1",
+  "version": "0.9.1",
   "private": true,
   "description": "A calm little side app: focus timer, what's now and next, and gentle reminders for people who work at a PC all day.",
   "main": "main.js",
@@ -20,6 +20,7 @@
       "preload.js",
       "web/**"
     ],
+    "electronLanguages": ["en-US", "tr"],
     "directories": {
       "output": "dist"
     },

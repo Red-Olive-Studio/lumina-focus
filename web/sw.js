@@ -1,6 +1,6 @@
 // Phone / browser build: keep the app working offline. Network first so updates show up, cache when offline.
-const CACHE = 'lumina-v3';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'logic.js', 'logo.svg', 'icon.png', 'manifest.webmanifest',
+const CACHE = 'lumina-v5';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'logic.js', 'i18n.js', 'ui.js', 'logo.svg', 'icon.png', 'manifest.webmanifest',
   'fonts/nunito-400.woff2', 'fonts/nunito-600.woff2', 'fonts/nunito-700.woff2', 'fonts/fraunces-600.woff2'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });

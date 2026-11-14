@@ -21,7 +21,7 @@
   <button id="quiet" class="icon" title="Pause reminders for 1 hour" aria-label="Pause reminders for 1 hour" aria-pressed="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/><path class="off" d="M4 4l16 16"/></svg>
   </button>
-  <button id="sleepBtn" class="icon" title="Start sleep timer" aria-label="Start sleep timer" aria-pressed="false">
+  <button id="sleepBtn" class="icon desk" title="Start sleep timer" aria-label="Start sleep timer" aria-pressed="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
   </button>
   <button id="openSettings" class="icon" title="Settings" aria-label="Settings">
@@ -70,6 +70,8 @@
     <ol id="doneList" class="rail donelist" hidden></ol>
     <button id="histToggle" class="link" title="What you did today, and when you focused or took a break">History</button>
     <div id="hist" class="hist" hidden></div>
+    <button id="notesToggle" class="link" hidden>Meeting notes</button>
+    <ol id="notesList" class="rail hist" hidden></ol>
   </section>
 </main>
 
@@ -78,21 +80,48 @@
   <div class="arow end"><button type="button" id="askNo" class="ghost">Back</button><button type="button" id="askOk" class="primary-sm"></button></div>
 </dialog>
 
+<dialog id="noteDlg" class="ask notes" aria-labelledby="noteHead">
+  <h2 id="noteHead"></h2>
+  <p id="noteWhen" class="help"></p>
+  <textarea id="noteText" rows="10" aria-label="Meeting notes" placeholder="Write your notes here. They stay on this device."></textarea>
+  <div class="arow end"><button type="button" id="noteCopy" class="ghost">Copy</button><button type="button" id="noteDone" class="primary-sm">Close</button></div>
+</dialog>
+
 <main id="intro" hidden>
   <div class="hero">
     <img src="logo.svg" alt="" width="64" height="64">
     <h1>lumina</h1>
-    <p class="tag">A quiet light beside your work.</p>
+    <p class="tag" lang="en">A quiet light beside your work.</p>
+    <p class="tag" lang="tr">İşinizin yanında sakin bir ışık.</p>
   </div>
-  <p class="lead">Made for people who spend the whole day at a PC: developers, designers, writers, anyone deep in a screen.</p>
-  <p>When you're in flow, the rest of the day disappears. The meeting slips by, the water glass stays full, and suddenly it's 7 pm with stiff shoulders. Lumina sits in the corner and keeps your day in view, so you can stay deep in the work without losing everything around it.</p>
-  <ul class="why">
-    <li><b>Now and next.</b> Tasks, meals and your own calendar's meetings in one timeline, with a heads-up before each.</li>
-    <li><b>Focus that runs itself.</b> Focus and breaks keep going all day, and History shows when you worked and when you rested.</li>
-    <li><b>Small nudges for your body.</b> Water, posture, eyes, a walk. Nothing to tick off; they just pass by.</li>
-    <li><b>An evening that winds down.</b> Warm light, a bedtime nudge, and a sleep timer for the late movie.</li>
-  </ul>
-  <p class="help">Everything stays on this PC. No account, no tracking.</p>
+  <div lang="en">
+    <p class="lead">Your work pays well. Is your body getting paid back?</p>
+    <p>You work on a screen, maybe earning thousands of dollars a month. Meanwhile the water glass stays full, your eyes haven't left the monitor since lunch, and it's 7 pm with stiff shoulders. Lumina keeps your health in the same view as your work: water, posture, eyes and a walk come by on their own, the screen turns warm in the evening, and bedtime gets a gentle nudge.</p>
+    <p class="lead">One app for the whole workday.</p>
+    <p>No juggling a focus timer, a to-do list, a calendar, a notes app and a night-light tool. It's all in one quiet timeline.</p>
+    <ul class="why">
+      <li><b>Your health, on time.</b> Small nudges for water, posture, eyes, stretching and a walk. Nothing to tick off; they just pass by.</li>
+      <li><b>Now and next.</b> Tasks, meals and your calendar's meetings in one timeline, with a heads-up before each and a Join button for the call.</li>
+      <li><b>Focus that runs itself.</b> Focus and breaks keep going all day; History shows when you worked and when you rested.</li>
+      <li><b>Meeting notes.</b> Take notes right on the meeting and find them again later.</li>
+      <li><b>An evening that winds down.</b> Warm light, a bedtime nudge, and a sleep timer for the late movie.</li>
+    </ul>
+    <p class="help">Everything stays on this device. No account, no tracking.</p>
+  </div>
+  <div lang="tr">
+    <p class="lead">İşiniz iyi kazandırıyor. Peki bedeniniz karşılığını alıyor mu?</p>
+    <p>Dijitalde çalışıyor, belki ayda binlerce dolar kazanıyorsunuz. Bu arada su bardağı dolu duruyor, gözleriniz öğleden beri ekrandan ayrılmadı ve saat 19:00 olduğunda omuzlarınız tutulmuş. Lumina sağlığınızı işinizle aynı ekranda tutar: su, duruş, göz molası ve kısa bir yürüyüş kendiliğinden hatırlatılır, akşam ekran sıcak bir renge döner, yatma saati gelince nazikçe haber verir.</p>
+    <p class="lead">Bütün iş günü için tek uygulama.</p>
+    <p>Odak zamanlayıcısı, yapılacaklar listesi, takvim, not uygulaması ve gece ışığı arasında gidip gelmeye gerek yok. Hepsi tek, sakin bir zaman çizelgesinde.</p>
+    <ul class="why">
+      <li><b>Sağlığınız, zamanında.</b> Su, duruş, göz, esneme ve yürüyüş için küçük hatırlatmalar. İşaretlenecek bir şey yok; gelip geçerler.</li>
+      <li><b>Şimdi ve sırada.</b> Görevler, öğünler ve takviminizdeki toplantılar tek zaman çizelgesinde; her birinden önce ön uyarı, görüşmeler için Katıl düğmesi.</li>
+      <li><b>Kendiliğinden süren odak.</b> Odak ve molalar gün boyu döner; Geçmiş ne zaman çalışıp ne zaman dinlendiğinizi gösterir.</li>
+      <li><b>Toplantı notları.</b> Notu doğrudan toplantının üzerine alın, sonra yeniden bulun.</li>
+      <li><b>Yavaşlayan bir akşam.</b> Sıcak ışık, yatma saati hatırlatması ve gece filmi için uyku zamanlayıcısı.</li>
+    </ul>
+    <p class="help">Her şey bu cihazda kalır. Hesap yok, takip yok.</p>
+  </div>
   <button id="introGo" class="primary">Start my day</button>
 </main>
 
@@ -116,6 +145,11 @@
   <div class="arow toggles" id="aToggles">
     <label class="tog"><input type="checkbox" id="aDaily"> Every day</label>
     <label class="tog"><input type="checkbox" id="aAlarm"> Alarm sound</label>
+    <label class="tog" title="Also add it to Google Calendar"><input type="checkbox" id="aGcal"> Google Calendar</label>
+    <select id="aLead" aria-label="Heads-up before tasks" title="Heads-up before tasks">
+      <option value="0">At the time</option><option value="5">5 min before</option><option value="10">10 min before</option>
+      <option value="15">15 min before</option><option value="30">30 min before</option><option value="60">1 h before</option>
+    </select>
   </div>
   <div class="arow end">
     <p id="aPreview" class="preview" aria-live="polite"></p>
@@ -145,30 +179,47 @@
   <button type="button" class="back" data-back>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>Back
   </button>
-  <h2>Focus <small>minutes</small></h2>
+  <details class="sect">
+  <summary><h2>Focus <small>timer lengths</small></h2></summary>
   <div class="grid">
-    <label>Focus <input type="number" min="1" data-s="focus"></label>
-    <label>Break <input type="number" min="1" data-s="short"></label>
-    <label>Long break <input type="number" min="1" data-s="long"></label>
-    <label>Long break every (0 = never) <input type="number" min="0" data-s="longEvery" aria-label="Long break every N sessions, 0 for never"></label>
-    <label class="chk wide"><input type="checkbox" data-s="autoNext"> Keep going: start the next focus or break on its own</label>
+    <label>Focus <span><input type="number" min="1" data-s="focus" aria-label="Focus, minutes"> min</span></label>
+    <label>Break <span><input type="number" min="1" data-s="short" aria-label="Break, minutes"> min</span></label>
+    <label>Long break <span><input type="number" min="1" data-s="long" aria-label="Long break, minutes"> min</span></label>
+    <label><span>Long break every</span><input type="number" min="0" data-s="longEvery" aria-label="Long break every N sessions, 0 for never"></label>
+    <p class="hint">After this many focus sessions you get a long break instead of a short one. 0 keeps only short breaks.</p>
+    <label class="chk wide"><input type="checkbox" data-s="autoNext"> Keep going</label>
+    <p class="hint">When a focus or a break ends, the next one starts by itself, so the timer runs all day.</p>
   </div>
+  </details>
 
-  <h2>My day</h2>
+  <details class="sect">
+  <summary><h2>My day <small>wake-up, bedtime, task heads-up</small></h2></summary>
   <div class="grid">
     <label>Wake up <input type="time" data-s="wake"></label>
     <label>Bedtime <input type="time" data-s="bed"></label>
+    <p class="hint">Your day runs from wake-up to the next wake-up, so 00:30 still counts as tonight. Body reminders only come between wake-up and bedtime.</p>
+    <label class="wide"><span>Heads-up before tasks</span><select data-s="taskLead">
+      <option value="0">At the time</option><option value="5">5 min before</option><option value="10">10 min before</option>
+      <option value="15">15 min before</option><option value="30">30 min before</option><option value="60">1 h before</option>
+    </select></label>
+    <p class="hint">A short alert this long before a task, besides the alert at its time. You can also pick it for each task when you add it.</p>
   </div>
+  </details>
 
-  <h2>Meals</h2>
+  <details class="sect">
+  <summary><h2>Meals <small>how many, when</small></h2></summary>
   <div class="grid">
-    <label>Meals a day (0 = none) <input type="number" id="mealCount" min="0" max="12"></label>
-    <label>Cook-or-order nudge, min before (0 = off) <input type="number" min="0" data-s="prep"></label>
+    <label>Meals a day <input type="number" id="mealCount" min="0" max="12" aria-label="Meals a day (0 = none)"></label>
+    <label><span>Cook-or-order</span><span><input type="number" min="0" data-s="prep" aria-label="Cook-or-order nudge, min before (0 = off)"> min</span></label>
+    <p class="hint">A nudge this many minutes before each meal, to start cooking or order in time. 0 turns it off.</p>
   </div>
   <ul id="mealList" class="list meals"></ul>
-  <p class="help">Each meal gets its own reminder. Rename them, change the time, or remove one with ×.</p>
+  <p class="hint">Each meal gets its own reminder. Rename them, change the time, or remove one with ×.</p>
+  </details>
 
-  <h2>Reminders <small>tick the ones you want</small></h2>
+  <details class="sect">
+  <summary><h2>Reminders <small>water, posture, eyes, a walk</small></h2></summary>
+  <p class="hint">Turn on the ones you want and set how often. They pause while you're away from the screen.</p>
   <ul id="rems" class="list"></ul>
   <form id="addRem" class="add">
     <input name="text" placeholder="New reminder" required aria-label="Reminder text">
@@ -177,10 +228,12 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
     </button>
   </form>
+  </details>
 
-  <section class="desk">
-  <h2>Focus lock</h2>
+  <details class="sect desk">
+  <summary><h2>Focus lock <small>only your work apps during focus</small></h2></summary>
   <label class="chk"><input type="checkbox" id="lockOn"> Cover everything else during focus</label>
+    <p class="hint">While focus runs, any app or tab that isn't on your list gets covered until you switch back. The taskbar and Start never lock, and the cover always lets you pause.</p>
   <label class="chk"><input type="checkbox" id="lockMeet"> Not during calendar meetings</label>
   <p id="lockHint" class="help lateTxt" hidden>Add at least one app or tab below; until then nothing is locked.</p>
   <ul id="lockRules" class="rules"></ul>
@@ -190,52 +243,86 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
     </button>
   </form>
+  <p class="hint">An app name (chrome, code) allows the whole app. A word from a tab's title (github, docs) allows only those tabs, so other Chrome tabs get covered.</p>
   <p class="help"><button id="pickWin" type="button" class="soft small">Pick from open windows</button></p>
   <ul id="winList" class="list cals"></ul>
-  <p class="help">An app name (chrome, code) allows the whole app. A word from a tab's title (github, docs) allows only those tabs, so other Chrome tabs get covered. The taskbar and Start never lock, and the cover always lets you pause.</p>
-  </section>
+  </details>
 
-  <h2>Calendars</h2>
+  <details class="sect">
+  <summary><h2>Calendars <small>Google, Outlook, or a file</small></h2></summary>
   <ul id="cals" class="list cals"></ul>
   <form id="addCal" class="calform">
     <input name="name" placeholder="Name, e.g. Work" required aria-label="Calendar name">
     <input name="url" placeholder="Paste the calendar link" required spellcheck="false" aria-label="Calendar link">
     <button class="soft small">Add calendar</button>
   </form>
-  <p class="help">Google Calendar: Settings → your calendar → <i>Secret address in iCal format</i>. Outlook: Settings → Calendar → Shared calendars → Publish → ICS link. Read-only; stays on this PC.</p>
+  <p class="help"><button id="calImport" type="button" class="soft small">Import a file (.ics or .zip)</button><input type="file" id="calFile" accept=".ics,.zip,text/calendar,application/zip" multiple hidden></p>
+  <details class="more"><summary>Where do I find the link?</summary>
+  <div lang="en">
+    <p class="help"><b>Link:</b> Google Calendar: Settings → your calendar → <i>Secret address in iCal format</i>. Outlook: Settings → Calendar → Shared calendars → Publish → ICS link.</p>
+    <p class="help"><b>No secret address?</b> Some work accounts hide it. Export instead: Google Calendar → Settings → Import &amp; export → Export, then import the .zip here as it is. A file doesn't update itself; import a newer export to refresh it.</p>
+    <p class="help">Read-only; stays on this device.</p>
+  </div>
+  <div lang="tr">
+    <p class="help"><b>Bağlantı:</b> Google Takvim: Ayarlar → takviminiz → <i>iCal biçimindeki gizli adres</i>. Outlook: Ayarlar → Takvim → Paylaşılan takvimler → Yayımla → ICS bağlantısı.</p>
+    <p class="help"><b>Gizli adres yok mu?</b> Bazı iş hesapları bunu gizler. Bunun yerine dışa aktarın: Google Takvim → Ayarlar → İçe ve dışa aktar → Dışa aktar, sonra .zip dosyasını olduğu gibi buradan içe aktarın. Dosya kendini güncellemez; yenilemek için yeni bir dışa aktarmayı tekrar içe aktarın.</p>
+    <p class="help">Salt okunur; bu cihazda kalır.</p>
+  </div>
+  </details>
   <p class="help"><span id="calStatus" role="status"></span> <button id="calSync" type="button" class="soft small">Sync now</button></p>
+  </details>
 
-  <h2>Evening</h2>
+  <details class="sect">
+  <summary><h2>Evening <small>night light, screen time, bedtime</small></h2></summary>
   <div class="grid">
-    <label class="chk"><input type="checkbox" data-g="screen"> Screen-time nudge after</label>
-    <label><span>min</span><input type="number" min="15" data-g="screenLimit" aria-label="Screen-time nudge after, minutes"></label>
-    <label class="chk"><input type="checkbox" data-g="night"> Warm night light from</label>
-    <label><span></span><input type="time" data-g="nightAt" aria-label="Night light time"></label>
-    <label class="desk wide">Night light uses <select data-g="nightMode">
+    <div class="row"><label class="chk"><input type="checkbox" data-g="night"> Warm night light from</label><input type="time" data-g="nightAt" aria-label="Night light time"></div>
+    <label class="desk wide"><span>Night light uses</span><select data-g="nightMode">
       <option value="tint">Lumina's warm tint</option><option value="windows">Windows Night light</option><option value="both">Both</option>
     </select></label>
-    <label class="chk desk-or-test"><input type="checkbox" data-g="shutdown"> Shut down PC at</label>
-    <label class="desk-or-test"><span></span><input type="time" data-g="shutdownAt" aria-label="Shutdown time"></label>
+    <p class="hint desk">Lumina's tint lays a warm layer over every screen and can also dim it. Windows Night light changes the display colors itself.</p>
+    <label class="desk">Warmth <input type="range" data-g="warm" min="5" max="50" step="1" aria-label="Night light warmth"></label>
+    <label class="desk"><span>Dim</span><input type="range" data-g="dim" min="0" max="60" step="1" aria-label="Dim the screen"></label>
+    <p class="hint desk">Darkens the screen beyond its lowest brightness. While you move the slider you see it for a few seconds.</p>
+    <div class="row"><label class="chk"><input type="checkbox" data-g="screen"> Screen-time nudge after</label><span class="unit"><input type="number" min="15" data-g="screenLimit" aria-label="Screen-time nudge after, minutes"> min</span></div>
+    <p class="hint">After this long at the screen without a break, a nudge to look away.</p>
+    <div class="row desk"><label class="chk"><input type="checkbox" data-g="shutdown"> Shut down PC at</label><input type="time" data-g="shutdownAt" aria-label="Shutdown time"></div>
     <label class="chk wide"><input type="checkbox" data-g="sleep"> Nudge me to sleep after bedtime</label>
   </div>
+  </details>
 
-  <h2>Sleep timer <small>the moon button</small></h2>
+  <details class="sect desk">
+  <summary><h2>Sleep timer <small>the moon button</small></h2></summary>
   <div class="grid">
-    <label>After <span><input type="number" min="5" data-s="sleepMin" aria-label="Sleep timer length, minutes"> min</span></label>
+    <label><span>After</span><span><input type="number" min="5" data-s="sleepMin" aria-label="Sleep timer length, minutes"> min</span></label>
+    <p class="hint">The moon button at the top starts it, for example for a movie. When it ends you always get 60 seconds to cancel.</p>
     <label>Then <select data-s="sleepAction">
       <option value="sleep">Sleep the PC</option><option value="shutdown">Shut down the PC</option>
       <option value="lock">Lock the PC</option><option value="remind">Only remind me</option>
     </select></label>
   </div>
+  </details>
 
-  <h2>App</h2>
+  <details class="sect desk">
+  <summary><h2>Corner widget <small>where the small pill sits</small></h2></summary>
+  <p class="help">Minimize Lumina and a small pill shows the timer and what's next. Pick a corner, or put it on the taskbar so it never covers your work. You can also drag it there.</p>
+  <div id="pipPick" class="pippick" role="group" aria-label="Corner widget position">
+    <button type="button" data-pip="tl" aria-label="Top left"></button><button type="button" data-pip="tr" aria-label="Top right"></button>
+    <button type="button" data-pip="bl" aria-label="Bottom left"></button><button type="button" data-pip="br" aria-label="Bottom right"></button>
+    <button type="button" data-pip="taskbar" class="tb">Taskbar</button>
+  </div>
+  </details>
+
+  <details class="sect">
+  <summary><h2>App <small>alerts, sound, theme, language</small></h2></summary>
   <div class="grid">
     <label>Alerts <select data-s="alert"><option value="popup">Pop-up + sound</option><option value="sound">Sound only</option></select></label>
     <label class="chk"><input type="checkbox" data-s="sound"> Sounds <button id="testAlert" type="button" class="soft small">Test</button></label>
     <label>Volume <input type="range" data-s="volume" min="5" max="100" step="5" aria-label="Sound volume"></label>
-    <label>Theme <select data-s="theme"><option value="system">Like Windows</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    <label>Theme <select data-s="theme"><option value="system">Automatic</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
     <label class="chk desk"><input type="checkbox" data-s="login"> Start with Windows</label>
+    <label>Language <select id="lang"><option value="auto">Automatic</option><option value="en">English</option><option value="tr">Türkçe</option></select></label>
   </div>
+  </details>
   <p class="help"><button id="openIntro" type="button" class="soft small">About Lumina</button></p>
 
   <button id="closeSettings" class="primary">Back</button>

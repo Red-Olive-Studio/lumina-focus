@@ -1,8 +1,11 @@
-import { hm, nowMin, dayKey, keyDate, addDays, dayLabel, inWindow, since, nextPhase, phaseLen, fmt, dur, until, parseAdd, parseWhen, streak, clockOf, calEvents, byDay, allowedWin, resizeMeals, icsUrl } from './logic.js';
+import { hm, nowMin, dayKey, keyDate, addDays, dayLabel, inWindow, since, nextPhase, phaseLen, fmt, dur, until, soon, parseAdd, parseWhen, streak, clockOf, calEvents, byDay, allowedWin, resizeMeals, icsUrl, pruneIcs, unzip, gcalLink } from './logic.js';
+import { tr, LANG, LOC, trDom } from './i18n.js';
+import { timeField, segSelect, swatches } from './ui.js';
 
 const desk = window.desk; // undefined in the browser build
 const TEST = new URLSearchParams(location.search).has('test'); // Ctrl+Shift+T, or `npm run test-mode`
 const $ = id => document.getElementById(id);
+trDom();
 const KEY = TEST ? 'lumina:test' : 'lumina'; // test mode never touches your real data
 const MIN = 60000, GRACE = 120 * MIN, AWAY = 300;
 
@@ -20,22 +23,23 @@ const PRESETS = [
   ['commit', '💾', 'Save and commit', 60, false], ['inbox', '📨', 'Check messages', 90, false],
 ];
 const preset = ([id, icon, text, every, on]) => ({ id, icon, text, every, on });
-const CAL_COLORS = ['#6A5BD0', '#2F8C79', '#C2557A', '#3A7BD5', '#B7791F', '#5E8B3A'];
+const CAL_COLORS = ['#6A5BD0', '#2F8C79', '#C2557A', '#3A7BD5', '#B7791F', '#5E8B3A'], COLOR_NAMES = ['Violet', 'Teal', 'Rose', 'Blue', 'Amber', 'Green'];
 const DEFAULT = {
   settings: {
     focus: 25, short: 5, long: 15, longEvery: 0, autoNext: true, sound: true, volume: 70, alert: 'popup', theme: 'system',
-    wake: '07:00', bed: '23:30', login: false, prep: 30, sleepMin: 90, sleepAction: 'sleep',
+    wake: '07:00', bed: '23:30', login: false, prep: 30, sleepMin: 90, sleepAction: 'sleep', taskLead: 0, gcal: false, pipAt: 'br',
   },
   meals: resizeMeals([], 3), // [{ id, title, time }], as many as you like
   lock: { on: false, rules: [], meetings: true }, // focus lock: app names or words from tab titles allowed during focus
   reminders: PRESETS.map(preset),
   // nightMode: Lumina's warm tint, Windows' own Night light, or both
-  guards: { screen: true, screenLimit: 90, sleep: true, night: true, nightAt: '21:00', nightMode: 'tint', shutdown: false, shutdownAt: '00:30' },
+  guards: { screen: true, screenLimit: 90, sleep: true, night: true, nightAt: '21:00', nightMode: 'tint', warm: 16, dim: 0, shutdown: false, shutdownAt: '00:30' },
   tasks: [{ id: 'vitamins', time: '09:00', title: 'Vitamins and pills', daily: true }],
   done: {}, fired: {}, last: {}, snooze: [], stats: {}, timers: [], quietUntil: 0,
   cals: [], cal: { events: [], at: 0 }, power: null,
   pomo: { phase: 'focus', round: 1, left: 25 * 60, endsAt: 0, running: false, away: false, from: 0 },
   lastBreak: 0, seen: 0, log: [], hidden: {}, introSeen: false,
+  notes: {}, // meeting notes by event: { 'ev:start:title': { title, at, text } }
 };
 
 // The "day" runs from wake-up to the next wake-up, so 00:30 still belongs to tonight.
@@ -50,6 +54,9 @@ const dk = (ms = now()) => dayKey(dayStart(ms));
 const S = load();
 function load() {
   let saved = {};
+  if (desk?.restore && localStorage.getItem(KEY) === null) try { // app storage came back empty (new install, cleared cache): use the copy on disk
+    for (const [k, v] of Object.entries(JSON.parse(desk.restore() || '{}'))) localStorage.setItem(k, v);
+  } catch {}
   const raw = localStorage.getItem(KEY) ?? (TEST ? null : localStorage.getItem('dailydoro'));
   try { saved = JSON.parse(raw) || {}; } catch { try { localStorage.setItem(KEY + ':broken', raw); } catch {} } // unreadable: keep a copy before starting fresh
   const d = structuredClone(DEFAULT), fresh = !saved.settings;
@@ -85,6 +92,7 @@ function load() {
   }
   s.log = s.log.filter(x => x.at > t - 8 * 864e5);
   for (const k in s.hidden) if (s.hidden[k] < t) delete s.hidden[k];
+  for (const k in s.notes) if (s.notes[k].at < t - 90 * 864e5) delete s.notes[k]; // meeting notes stay 90 days
   if (s.settings.calUrls !== undefined) { // 0.3 kept bare links; now each calendar has a name
     s.cals = s.settings.calUrls.split(/\s+/).filter(Boolean).map((url, i) => ({ id: crypto.randomUUID(), name: `Calendar ${i + 1}`, url }));
     delete s.settings.calUrls;
@@ -102,8 +110,11 @@ function load() {
   return s;
 }
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
-let planKey = '';
-const changed = () => { save(); renderRems(); planKey = ''; tick(); };
+// Desktop: a copy of everything on disk (next to the app's data), so an update, a reinstall or cleared app storage
+// never means adding calendars and settings again. Written shortly after each change and every 10 minutes.
+const backup = () => { try { desk?.backup(JSON.stringify(Object.fromEntries(Object.keys(localStorage).filter(k => k.startsWith('lumina')).map(k => [k, localStorage.getItem(k)])))); } catch {} };
+let planKey = '', backupT;
+const changed = () => { save(); renderRems(); planKey = ''; tick(); clearTimeout(backupT); backupT = setTimeout(backup, 2000); };
 
 // A sample day around "now" so every kind of item and alert can be tried in test mode.
 function seed(s, t, k) {
@@ -137,15 +148,18 @@ function seed(s, t, k) {
   }
 }
 
+// Every element is built here, so this is where its words get translated (names typed by the user pass through unchanged).
 function el(tag, props = {}, ...kids) {
+  for (const k of ['textContent', 'title', 'ariaLabel', 'placeholder', ...(props.className === 'bare' ? ['value'] : [])]) if (k in props) props[k] = tr(props[k]);
   const e = Object.assign(document.createElement(tag), props);
-  e.append(...kids.filter(k => k !== '' && k != null));
+  e.append(...kids.filter(k => k !== '' && k != null).map(tr));
   return e;
 }
 const ICON = {
   repeat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>',
 };
 const iconBtn = (icon, label, onclick, on) => el('button', { className: 'icon act' + (on ? ' on' : ''), innerHTML: ICON[icon], title: label, ariaLabel: label, onclick });
 
@@ -181,6 +195,7 @@ let alert = null, idleSec = 0;
 // acts: [[label, fn], ...]; ring = alarm that repeats until you answer it (up to 5 minutes)
 // icon = a nudge: a quiet reminder with nothing to tick off, shown in a softer style.
 function notify(text, sound, acts = [], ring = false, icon = '') {
+  text = tr(text);
   sfx(ring ? 'alarm' : sound);
   if (S.settings.alert === 'sound' && !ring) return;
   alert = { text, acts, ring, icon, real: Date.now(), rang: Date.now() };
@@ -230,8 +245,8 @@ function askSleep() {
     sl ? 'Stop timer' : 'Start', toggleSleep);
 }
 function ask(text, ok, fn) {
-  $('askText').textContent = text;
-  $('askOk').textContent = ok;
+  $('askText').textContent = tr(text);
+  $('askOk').textContent = tr(ok);
   $('askOk').onclick = () => { $('ask').close(); fn(); };
   $('ask').showModal();
 }
@@ -258,13 +273,38 @@ const inMeeting = t => S.cal.events.some(e => !e.allDay && !e.free && shown(e) &
 // Meeting "Join" links open in the default browser (desktop), the phone's browser (app), or a new tab.
 const openLink = u => desk ? desk.link(u) : window.open(u, '_blank', 'noopener');
 const joinAct = e => e.join ? [['Join', () => openLink(e.join)]] : [];
+
+// ---- meeting notes: one note per calendar event, typed in Lumina, kept 90 days ----
+let noteEv = null;
+const noteWhen = ms => `${new Date(ms).toLocaleDateString(LOC, { weekday: 'short', day: 'numeric', month: 'short' })} ${clockOf(ms)}`;
+function openNote(e) {
+  noteEv = { title: e.title, at: e.start };
+  $('noteHead').textContent = e.title;
+  $('noteWhen').textContent = noteWhen(e.start);
+  $('noteText').value = S.notes[evKey(e)]?.text || '';
+  $('noteCopy').textContent = tr('Copy');
+  desk?.open(); // from the corner widget's alert: bring Lumina up to type in
+  if (!$('noteDlg').open) $('noteDlg').showModal();
+  $('noteText').focus();
+}
+$('noteText').oninput = e => {
+  const k = evKey({ start: noteEv.at, title: noteEv.title }), text = e.target.value;
+  if (text.trim()) S.notes[k] = { ...noteEv, text }; else delete S.notes[k];
+  save();
+};
+$('noteDone').onclick = () => $('noteDlg').close();
+$('noteDlg').onclose = () => changed();
+$('noteCopy').onclick = () => navigator.clipboard?.writeText(`${noteEv.title} · ${noteWhen(noteEv.at)}\n\n${$('noteText').value}`)
+  .then(() => { $('noteCopy').textContent = tr('Copied'); }, () => {});
 function hide(key, until, title) { S.hidden[key] = until; log('Removed: ' + title); undoable('Removed: ' + title, () => { delete S.hidden[key]; log('Restored: ' + title); }); changed(); }
 // Shown even in "sound only" mode: a mis-click needs a way back.
 function undoable(text, fn) {
-  alert = { text, acts: [['Undo', () => { fn(); changed(); }]], ring: false, icon: '↩', real: Date.now(), rang: Date.now() };
+  alert = { text: tr(text), acts: [['Undo', () => { fn(); changed(); }]], ring: false, icon: '↩', real: Date.now(), rang: Date.now() };
   renderAlert();
 }
 const todays = () => [...meals(), ...S.tasks.filter(t => t.daily || t.date === dk())];
+// Minutes of heads-up before a task: its own, or the default from Settings. Meals have their cook-or-order nudge instead.
+const taskLead = x => x.meal ? 0 : x.lead ?? S.settings.taskLead;
 const doneKey = t => t.daily ? dk() : t.date;
 const isDone = t => (S.done[doneKey(t)] || []).includes(t.id);
 function setDone(t, on) {
@@ -324,7 +364,9 @@ function schedulePhone(t) {
     if (i.kind === 'remind' || !i.ms || i.allDay || (i.ev && leadOf(i.ev) < 0)) continue;
     const at = i.kind === 'event' ? i.ev.start - leadOf(i.ev) * MIN : i.ms;
     const body = i.kind === 'event' ? `${i.title} at ${clockOf(i.ev.start)}` : i.kind === 'timer' ? `${i.title} is done` : i.kind === 'focus' ? (S.pomo.phase === 'focus' ? 'Focus done. Take a short break.' : 'Break is over. Back to focus.') : i.kind === 'prep' ? `Time to cook or order ${i.meal.title.toLowerCase()}` : i.title;
-    if (at > t) items.push({ at, body });
+    if (at > t) items.push({ at, body: tr(body) });
+    const lead = i.task ? taskLead(i.task) : 0;
+    if (lead > 0 && i.ms - lead * MIN > t) items.push({ at: i.ms - lead * MIN, body: tr(`${i.title} at ${clockOf(i.ms)}`) });
   }
   items.sort((a, b) => a.at - b.at).splice(60);
   const key = JSON.stringify(items);
@@ -338,18 +380,24 @@ async function syncCal() {
   syncing = true;
   try { await syncOnce(); } finally { syncing = false; if (syncAgain) { syncAgain = false; syncCal(); } }
 }
+// Imported calendar files (an .ics or Google's export .zip) live in their own key, so the main save stays small.
+const fileKey = id => `${KEY}:ics:${id}`;
+const getIcs = c => c.file ? Promise.resolve(localStorage.getItem(fileKey(c.id)) || '') : fetchIcs ? fetchIcs(c.url) : Promise.reject(new Error('browser'));
 async function syncOnce() {
   const cals = S.cals.filter(c => c.url !== 'sample'), from = dayStart();
-  if (!fetchIcs || !cals.length) { if (!S.cals.length) S.cal = { events: [], at: 0 }; return changed(); }
-  $('calStatus').textContent = 'Syncing…';
+  if (!cals.length) { if (!S.cals.length) S.cal = { events: [], at: 0 }; return changed(); }
+  $('calStatus').textContent = tr('Syncing…');
   const read = v => { if (!/BEGIN:VCALENDAR/.test(v)) throw new Error('page'); return calEvents(v, from, from + 8 * 864e5); };
-  const res = await Promise.allSettled(cals.map(c => fetchIcs(c.url).then(read)));
+  const res = await Promise.allSettled(cals.map(c => getIcs(c).then(read)));
   const keep = new Set(S.cals.map(c => c.id)), events = S.cal.events.filter(e => S.cals.some(c => c.url === 'sample' && c.name === e.cal));
   res.forEach((r, i) => {
     const c = cals[i];
     if (!keep.has(c.id)) return; // removed while syncing
     const why = String(r.reason?.message || r.reason || '');
-    c.err = r.status === 'fulfilled' ? '' : why === 'page' ? 'This link opens a web page, not a calendar. Copy the iCal address instead.'
+    c.err = r.status === 'fulfilled' ? '' : why === 'browser' ? 'Calendar links sync in the desktop and phone apps. In a browser, import a file instead.'
+      : why === 'page' ? (c.file ? 'No calendar found in that file.' : 'This link opens a web page, not a calendar. Copy the iCal address instead.')
+      // a pasted page link becomes Google's public address, which only works for public calendars
+      : /HTTP 40[134]/.test(why) && /\/public\/basic\.ics$/.test(c.url) ? "This calendar isn't public. Use its secret iCal address, or import an export file."
       : /HTTP 40[134]/.test(why) ? 'This link no longer works. It may have been reset or made private; copy it again.'
       : /Not a web link/.test(why) ? 'This is not a web link.' : 'Could not load. Check your connection.';
     // offline or a bad answer: keep what we had for this calendar
@@ -380,24 +428,29 @@ function renderCals() {
     ...[[-1, 'No heads-up'], [0, 'When it starts'], [5, '5 min before'], [10, '10 min before'], [15, '15 min before'], [30, '30 min before']]
       .map(([v, l]) => el('option', { value: v, textContent: l, selected: v === (c.lead ?? 10) })));
   $('cals').replaceChildren(...S.cals.map(c => el('li', { className: c.off ? 'off' : '' },
-    el('input', { type: 'color', className: 'cswatch', value: c.color || CAL_COLORS[0], title: 'Color of ' + c.name, ariaLabel: 'Color of ' + c.name, onchange: e => { c.color = e.target.value; changed(); } }),
+    el('span', { className: 'cdot', style: `--c:${c.color || CAL_COLORS[0]}` }),
     el('details', { className: 'cinfo', open: openCal === c.id, ontoggle: e => { openCal = e.target.open ? c.id : openCal === c.id ? '' : openCal; } },
       el('summary', {}, el('b', { textContent: c.name }), el('small', { className: c.err ? 'lateTxt' : '',
         textContent: c.err ? (c.err === true ? 'Could not load. Check the link or your connection.' : c.err) : c.off ? 'Hidden from the timeline'
-          : c.url === 'sample' ? 'Sample calendar' : host(c.url) + (c.n !== undefined ? ` · ${c.n} ${c.n === 1 ? 'event' : 'events'} this week` : '') })),
+          : c.url === 'sample' ? 'Sample calendar' : (c.file ? 'Imported file' : host(c.url)) + (c.n !== undefined ? ` · ${c.n} ${c.n === 1 ? 'event' : 'events'} this week` : '') })),
       el('div', { className: 'cedit' },
         el('label', {}, 'Name ', el('input', { value: c.name, ariaLabel: 'Name of ' + c.name, onchange: e => rename(c, e.target.value) })),
         el('label', {}, 'Heads-up ', lead(c)),
+        el('div', { className: 'crow' }, el('span', { textContent: 'Color' }),
+          swatches(CAL_COLORS.map((x, i) => [x, COLOR_NAMES[i]]), c.color || CAL_COLORS[0], tr('Color of ' + c.name), x => { c.color = x; changed(); })),
         el('label', { className: 'chk' }, el('input', { type: 'checkbox', checked: !c.off, onchange: e => { c.off = !e.target.checked; changed(); } }), ' Show on the timeline'))),
     restoreBtn(c),
-    iconBtn('x', 'Remove ' + c.name, () => { S.cals = S.cals.filter(x => x !== c); S.cal.events = S.cal.events.filter(e => e.cal !== c.name); changed(); }))));
-  $('calStatus').textContent = !fetchIcs && S.cals.some(c => c.url !== 'sample') ? 'Calendars sync in the desktop and phone apps, not in a browser.'
-    : S.cals.length ? (S.cal.at ? `Synced ${clockOf(S.cal.at)} · ${S.cal.events.length} events this week` : 'Not synced yet') : 'No calendars yet';
+    iconBtn('x', 'Remove ' + c.name, () => {
+      S.cals = S.cals.filter(x => x !== c); S.cal.events = S.cal.events.filter(e => e.cal !== c.name);
+      try { localStorage.removeItem(fileKey(c.id)); } catch {}
+      changed();
+    }))));
+  $('calStatus').textContent = tr(S.cals.length ? (S.cal.at ? `Synced ${clockOf(S.cal.at)} · ${S.cal.events.length} events this week` : 'Not synced yet') : 'No calendars yet');
   $('calSync').hidden = !S.cals.length;
 }
 
 // ---- main loop: everything is time-based, so a throttled or late tick still fires correctly ----
-let tintOn = false, winNightOn = false, tintTest = 0;
+let tintOn = '', winNightOn = false, tintTest = 0;
 
 // ---- focus lock: while focus runs, other apps and tabs get covered until you switch back ----
 let fg = null, locked = null, lockPause = 0, watching = null; // null: tell main once at start, in case a reload left the watcher running
@@ -453,10 +506,11 @@ function tick() {
   for (const x of todays()) if (x.time && !isDone(x)) {
     const ms = taskMs(x);
     once('task:' + x.id, ms, () => taskAlert(x));
+    if (taskLead(x) > 0) once('lead:' + x.id, ms - taskLead(x) * MIN, () => notify(`${x.title} at ${x.time}`, 'remind'));
     if (x.meal && +s.prep > 0) once('prep:' + x.id, ms - s.prep * MIN, () => notify(`Time to cook or order ${x.title.toLowerCase()}`, 'remind'));
   }
   for (const e of S.cal.events) if (!e.allDay && shown(e) && leadOf(e) >= 0)
-    once(`cal:${e.start}:${e.title}`, e.start - leadOf(e) * MIN, () => notify(leadOf(e) ? `${e.title} at ${clockOf(e.start)}` : `${e.title} starts now`, 'remind', joinAct(e)));
+    once(`cal:${e.start}:${e.title}`, e.start - leadOf(e) * MIN, () => notify(leadOf(e) ? `${e.title} at ${clockOf(e.start)}` : `${e.title} starts now`, 'remind', [...joinAct(e), ['Notes', () => openNote(e)]]));
 
   // Away from the PC counts as a break: focus pauses, reminders restart when you're back instead of piling up.
   const away = !!desk && idleSec >= AWAY;
@@ -470,7 +524,7 @@ function tick() {
       P.running = false; P.away = gone; stat().breaks++;
     }
   } else if (P.away) {
-    if (P.away > 1) S.log.push({ at: P.away, end: t, text: 'Away from the PC', kind: 'break' }); // older data stored `true`
+    if (P.away > 1) S.log.push({ at: P.away, end: t, text: 'Away from the screen', kind: 'break' }); // older data stored `true`
     P.away = false;
     notify("You're back. Focus is paused.", 'remind', [['Continue', toggle]]);
   }
@@ -491,7 +545,8 @@ function tick() {
   const night = (g.night && inWindow(nowMin(new Date(t)), hm(g.nightAt), hm(s.wake))) || Date.now() < tintTest;
   if (desk) {
     const wantTint = night && g.nightMode !== 'windows', wantWin = night && g.nightMode !== 'tint';
-    if (wantTint !== tintOn) desk.tint(tintOn = wantTint);
+    const tint = wantTint ? `${g.warm}/${g.dim}` : ''; // how warm and how dim (0-100), sent again when a slider moves
+    if (tint !== tintOn) desk.tint((tintOn = tint) && { warm: +g.warm, dim: +g.dim });
     if (wantWin !== winNightOn) desk.winNight(winNightOn = wantWin); // only on changes, so a Night light you set yourself is left alone
   }
   checkLock();
@@ -547,12 +602,12 @@ function plan(t) {
     for (const x of S.tasks) if (!x.daily && x.date === key && !isDone(x)) items.push({ ms: taskMs(x), kind: 'task', title: x.title, task: x, day: true });
     for (const e of S.cal.events.filter(shown)) if (dayKey(e.start) === key) items.push({ ms: e.start, kind: 'event', title: e.title, ev: e, allDay: e.allDay, day: true });
     items.sort((a, b) => (a.allDay ? -1 : a.ms ?? Infinity) - (b.allDay ? -1 : b.ms ?? Infinity));
-    if (items.length) days.push([dayLabel(key, keyDate(k)), items]);
+    if (items.length) days.push([dayLabel(key, keyDate(k), LOC), items]);
   }
   return { nowL, up, days };
 }
 
-let lastAdded = '', showDone = false, showHist = false, openDays = new Set(), curPlan = { nowL: [], up: [], days: [] };
+let lastAdded = '', showDone = false, showHist = false, showNotes = false, openDays = new Set(), curPlan = { nowL: [], up: [], days: [] };
 function row(i, t) {
   const x = i.task, kind = i.kind, meta = [];
   if (i.late) meta.push(el('span', { className: 'lateTxt', textContent: 'missed' }));
@@ -586,6 +641,7 @@ function row(i, t) {
   if (x?.meal) acts.append(iconBtn('x', 'Skip today: ' + x.title, () => hide(`${x.id}@${dk()}`, dayStart() + 864e5, x.title)));
   // Join shows from 15 minutes before until the meeting ends.
   if (i.ev?.join && !i.allDay && i.ev.start - t < 15 * MIN && i.ev.end > t) acts.append(el('button', { className: 'soft small join', textContent: 'Join', title: 'Join the call', ariaLabel: 'Join ' + i.title, onclick: () => openLink(i.ev.join) }));
+  if (i.ev && !i.allDay) acts.append(iconBtn('note', 'Notes: ' + i.title, () => openNote(i.ev), !!S.notes[evKey(i.ev)]));
   if (i.ev) acts.append(iconBtn('x', 'Remove from Lumina (stays in your calendar): ' + i.title, () => hide(evKey(i.ev), (i.ev.end || i.ev.start) + 864e5, i.ev.title)));
   if (i.rem) acts.append(iconBtn('x', 'Turn off (back on in Settings): ' + i.rem.text, () => { i.rem.on = false; log('Turned off: ' + i.rem.text); changed(); }));
   if (i.timer) acts.append(iconBtn('x', 'Cancel timer: ' + i.title, () => { S.timers = S.timers.filter(y => y !== i.timer); log('Timer cancelled: ' + i.title); changed(); }));
@@ -602,7 +658,7 @@ function renderPlan(t) {
   curPlan = P;
   schedulePhone(t);
   const doneL = todays().filter(isDone);
-  const key = JSON.stringify([Math.floor(t / MIN), P, showDone, doneL.map(x => x.id), showHist && S.log.length, S.cals.map(c => c.color)]);
+  const key = JSON.stringify([Math.floor(t / MIN), P, showDone, doneL.map(x => x.id), showHist && S.log.length, S.cals.map(c => c.color), Object.keys(S.notes), showNotes]);
   if (key !== planKey) {
     planKey = key;
     const had = document.activeElement?.closest('#plan, #later, #doneList') && document.activeElement.getAttribute('aria-label');
@@ -613,16 +669,25 @@ function renderPlan(t) {
       P.nowL.length + P.up.length ? '' : el('li', { className: 'it empty' }, el('time'), el('span', { className: 'dot' }), el('div', { className: 'body' }, el('small', { textContent: 'Nothing else today. Press + to add something.' }))));
     $('later').replaceChildren(...P.days.flatMap(([label, items]) => [el('h3', { className: 'eyebrow day', textContent: label }), el('ol', { className: 'rail' }, ...items.map(i => row(i, t)))]));
     $('doneToggle').hidden = !doneL.length;
-    $('doneToggle').textContent = showDone ? 'Hide done' : `${doneL.length} done today`;
+    $('doneToggle').textContent = tr(showDone ? 'Hide done' : `${doneL.length} done today`);
     $('doneList').hidden = !showDone || !doneL.length;
     $('doneList').replaceChildren(...doneL.map(x => row({ ms: taskMs(x), kind: x.meal ? 'meal' : x.daily ? 'habit' : 'task', title: x.title, task: x }, t)));
     if (had) [...document.querySelectorAll('#plan [aria-label], #later [aria-label], #doneList [aria-label]')].find(b => b.getAttribute('aria-label') === had)?.focus();
-    $('histToggle').textContent = showHist ? 'Hide history' : 'History';
+    $('histToggle').textContent = tr(showHist ? 'Hide history' : 'History');
     $('hist').hidden = !showHist;
     if (showHist) renderHist(t);
+    // Past meeting notes, newest first; a click opens the note again.
+    const notes = Object.values(S.notes).sort((a, b) => b.at - a.at);
+    $('notesToggle').hidden = !notes.length;
+    $('notesToggle').textContent = tr(showNotes ? 'Hide notes' : 'Meeting notes');
+    $('notesList').hidden = !showNotes || !notes.length;
+    if (showNotes) $('notesList').replaceChildren(...notes.map(n => el('li', { className: 'it h' },
+      el('time', { textContent: clockOf(n.at) }), el('span', { className: 'dot' }),
+      el('div', { className: 'body' }, el('button', { type: 'button', className: 'notelink', textContent: n.title, title: 'Notes: ' + n.title, onclick: () => openNote({ start: n.at, title: n.title }) }),
+        el('small', { textContent: `${noteWhen(n.at)} · ${n.text.trim().split('\n')[0].slice(0, 80)}` })))));
     lastAdded = '';
   }
-  for (const l of document.querySelectorAll('.live')) l.textContent = fmt((+l.dataset.end - t) / 1000) + ' left';
+  for (const l of document.querySelectorAll('.live')) l.textContent = tr(fmt((+l.dataset.end - t) / 1000) + ' left');
 }
 
 // Today's history in time order; earlier days stay folded until you open them.
@@ -636,7 +701,7 @@ function renderHist(t) {
   $('hist').replaceChildren(
     el('ol', { className: 'rail' }, ...(today.length ? today.map(item) : [el('li', { className: 'it empty' }, el('time'), el('span', { className: 'dot' }), el('div', { className: 'body' }, el('small', { textContent: 'Nothing yet today.' })))])),
     ...days.filter(([d]) => d !== k).map(([d, xs]) => el('details', { className: 'hday', open: openDays.has(d), ontoggle: e => openDays[e.target.open ? 'add' : 'delete'](d) },
-      el('summary', { className: 'eyebrow', textContent: `${d === dayKey(addDays(keyDate(k), -1)) ? 'Yesterday' : keyDate(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })} · ${xs.length}` }),
+      el('summary', { className: 'eyebrow', textContent: `${d === dayKey(addDays(keyDate(k), -1)) ? 'Yesterday' : keyDate(d).toLocaleDateString(LOC, { weekday: 'long', day: 'numeric', month: 'short' })} · ${xs.length}` }),
       el('ol', { className: 'rail' }, ...xs.map(item)))));
 }
 
@@ -645,38 +710,39 @@ let lastSnap = '';
 function render(t) {
   const P = S.pomo, s = S.settings, left = pomoLeft(t), tt = fmt(left), d = new Date(t);
   $('clock').textContent = clockOf(t);
-  $('date').textContent = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
+  $('date').textContent = d.toLocaleDateString(LOC, { weekday: 'short', day: 'numeric' });
   $('time').textContent = tt;
-  document.title = (P.running ? `${Math.ceil(left / 60)} min · ` : '') + 'Lumina' + (TEST ? ' (test)' : ''); // minutes only: screen readers re-read title changes
+  document.title = tr((P.running ? `${Math.ceil(left / 60)} min · ` : '') + 'Lumina' + (TEST ? ' (test)' : '')); // minutes only: screen readers re-read title changes
   const paused = !P.running && P.left < phaseLen(P.phase, s);
-  $('head').textContent = (P.phase === 'focus' ? (P.running || paused ? 'Focus' : 'Ready to focus') : P.phase === 'long' ? 'Long break' : 'Break')
-    + (s.longEvery > 0 && P.phase === 'focus' ? ` · ${P.round} of ${s.longEvery}` : '') + (paused ? ' · paused' : '');
+  $('head').textContent = tr(P.phase === 'focus' ? (P.running || paused ? 'Focus' : 'Ready to focus') : P.phase === 'long' ? 'Long break' : 'Break')
+    + (s.longEvery > 0 && P.phase === 'focus' ? ` · ${P.round}/${s.longEvery}` : '') + (paused ? ' · ' + tr('paused') : '');
   document.body.dataset.phase = P.phase;
   document.body.classList.toggle('running', P.running);
-  $('toggle').ariaLabel = P.running ? 'Pause focus' : 'Start focus';
-  $('brk').textContent = P.phase === 'focus' ? 'Break' : 'Focus';
-  $('brk').title = P.phase === 'focus' ? 'Take a break now' : 'End the break and focus';
+  $('toggle').ariaLabel = tr(P.running ? 'Pause focus' : 'Start focus');
+  $('brk').textContent = tr(P.phase === 'focus' ? 'Break' : 'Focus');
+  $('brk').title = tr(P.phase === 'focus' ? 'Take a break now' : 'End the break and focus');
   $('prog').style.width = 100 * (1 - Math.max(0, left) / phaseLen(P.phase, s)) + '%';
   const st = stat(), f = st.focus + liveFocus(t);
-  $('stats').textContent = f >= 60 || st.breaks ? `${dur(f)} focus · ${st.sessions} ${st.sessions === 1 ? 'session' : 'sessions'} · ${st.breaks} ${st.breaks === 1 ? 'break' : 'breaks'}` : 'No focus yet today';
+  $('stats').textContent = tr(f >= 60 || st.breaks ? `${dur(f)} focus · ${st.sessions} ${st.sessions === 1 ? 'session' : 'sessions'} · ${st.breaks} ${st.breaks === 1 ? 'break' : 'breaks'}` : 'No focus yet today');
   const sl = sleepTimer();
   $('sleepBtn').classList.toggle('on', !!sl);
   $('sleepBtn').setAttribute('aria-pressed', !!sl);
-  $('sleepBtn').title = $('sleepBtn').ariaLabel = sl ? `Sleep timer: ${fmt((sl.endsAt - t) / 1000)} left` : `Sleep timer: in ${dur(s.sleepMin * 60)} ${SLEEPDO[s.sleepAction]}`;
+  $('sleepBtn').title = $('sleepBtn').ariaLabel = tr(sl ? `Sleep timer: ${fmt((sl.endsAt - t) / 1000)} left` : `Sleep timer: in ${dur(s.sleepMin * 60)} ${SLEEPDO[s.sleepAction]}`);
   document.documentElement.dataset.theme = s.theme;
   const q = t < S.quietUntil;
   $('quiet').classList.toggle('on', q);
   $('quiet').setAttribute('aria-pressed', q);
-  $('quiet').title = $('quiet').ariaLabel = q ? `Reminders paused until ${clockOf(S.quietUntil)}. Click to resume` : 'Pause reminders for 1 hour';
+  $('quiet').title = $('quiet').ariaLabel = tr(q ? `Reminders paused until ${clockOf(S.quietUntil)}. Click to resume` : 'Pause reminders for 1 hour');
   renderPlan(t);
   if (!$('week').hidden) renderWeek(t);
-  if (TEST) $('tClock').textContent = `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${d.toLocaleTimeString('en-GB')}${clk.speed > 1 ? ` · ×${clk.speed}` : ''}`;
+  if (TEST) $('tClock').textContent = `${d.toLocaleDateString(LOC, { weekday: 'short' })} ${d.toLocaleTimeString(LOC)}${clk.speed > 1 ? ` · ×${clk.speed}` : ''}`;
 
   if (!desk) return;
   const nx = curPlan.up.find(i => i.kind !== 'remind');
   const snap = JSON.stringify({
     time: tt, phase: P.phase, running: P.running, theme: s.theme,
-    next: nx ? `${until(nx.ms, t)} · ${nx.title}` : 'All clear',
+    next: nx ? `${tr(soon(nx.ms - t))} ${tr(nx.title)}` : tr('All clear'), // short: the widget is narrow
+    nextFull: nx ? `${tr(until(nx.ms, t))} · ${tr(nx.title)}` : '',
     alert: alert && { text: alert.text, icon: alert.icon, acts: alert.acts.map(a => a[0]) },
   });
   if (snap !== lastSnap) { lastSnap = snap; desk.state(JSON.parse(snap)); }
@@ -696,15 +762,15 @@ function renderWeek(t) {
   $('wBars').replaceChildren(...keys.map(key => {
     const bar = el('i');
     bar.style.height = Math.max(2, 100 * sec(key) / max) + '%';
-    return el('div', { className: 'col' + (key === k ? ' today' : ''), title: `${dayLabel(key, keyDate(k))}: ${dur(sec(key))}`, role: 'img', ariaLabel: `${keyDate(key).toLocaleDateString('en-GB', { weekday: 'long' })}: ${dur(sec(key))} focus` },
+    return el('div', { className: 'col' + (key === k ? ' today' : ''), title: `${dayLabel(key, keyDate(k), LOC)}: ${dur(sec(key))}`, role: 'img', ariaLabel: `${keyDate(key).toLocaleDateString(LOC, { weekday: 'long' })}: ${dur(sec(key))} focus` },
       el('span', { className: 'v', textContent: sec(key) >= 60 ? dur(sec(key)) : '' }), el('div', { className: 'track' }, bar),
-      el('small', { textContent: keyDate(key).toLocaleDateString('en-GB', { weekday: 'narrow' }) }));
+      el('small', { textContent: keyDate(key).toLocaleDateString(LOC, { weekday: 'narrow' }) }));
   }));
   const habits = todays().filter(x => x.daily);
   $('wHabits').replaceChildren(...habits.map(x => {
     const n = streak(S.done, x.id, keyDate(k));
     return el('li', {}, el('span', { className: 'title', textContent: x.title }),
-      el('span', { className: 'week' }, ...keys.map(key => el('i', { className: S.done[key]?.includes(x.id) ? 'on' : '', title: dayLabel(key, keyDate(k)), role: 'img', ariaLabel: `${dayLabel(key, keyDate(k))}: ${S.done[key]?.includes(x.id) ? 'done' : 'not done'}` }))),
+      el('span', { className: 'week' }, ...keys.map(key => el('i', { className: S.done[key]?.includes(x.id) ? 'on' : '', title: dayLabel(key, keyDate(k), LOC), role: 'img', ariaLabel: `${dayLabel(key, keyDate(k), LOC)}: ${S.done[key]?.includes(x.id) ? 'done' : 'not done'}` }))),
       el('small', { textContent: n >= 2 ? `${n} days` : '' }));
   }), habits.length ? '' : el('li', { className: 'muted', textContent: 'Make anything a daily habit with the repeat button.' }));
 }
@@ -729,7 +795,7 @@ function renderMeals() {
   const sorted = [...S.meals].sort((a, b) => since(hm(a.time), hm(S.settings.wake)) - since(hm(b.time), hm(S.settings.wake)));
   $('mealList').replaceChildren(...sorted.map(m => el('li', {},
     el('input', { className: 'bare', value: m.title, ariaLabel: 'Meal name', onchange: e => { m.title = e.target.value.trim() || m.title; changed(); } }),
-    el('input', { type: 'time', value: m.time, ariaLabel: 'Time of ' + m.title, onchange: e => { if (e.target.value) m.time = e.target.value; changed(); } }),
+    timeField(el('input', { type: 'time', value: m.time, ariaLabel: 'Time of ' + m.title, onchange: e => { if (e.target.value) m.time = e.target.value; changed(); } })),
     iconBtn('x', 'Remove ' + m.title, () => { S.meals = S.meals.filter(x => x !== m); changed(); }))));
 }
 $('mealCount').onchange = e => {
@@ -762,13 +828,13 @@ $('pickWin').onclick = async () => {
 };
 
 // ---- the + button: name, time or timer length, done ----
-const A = { title: $('aTitle'), when: $('aWhen'), day: $('aDay'), daily: $('aDaily'), alarm: $('aAlarm') };
+const A = { title: $('aTitle'), when: $('aWhen'), day: $('aDay'), daily: $('aDaily'), alarm: $('aAlarm'), lead: $('aLead'), gcal: $('aGcal') };
 function openAdder(on) {
   if (!on && !$('adder').hidden && $('adder').contains(document.activeElement)) $('fab').focus();
   $('adder').hidden = !on;
   $('fab').setAttribute('aria-expanded', on);
   $('fab').classList.toggle('open', on);
-  if (on) { $('adder').reset(); A.day.value = A.day.min = dk(); A.day.dataset.touched = ''; updAdder(); A.title.focus(); }
+  if (on) { $('adder').reset(); A.day.value = A.day.min = dk(); A.day.dataset.touched = ''; A.lead.value = S.settings.taskLead; A.gcal.checked = S.settings.gcal; updAdder(); A.title.focus(); }
 }
 function draft() {
   const t = now(), title = A.title.value.trim(), whenTxt = A.when.value.trim(), w = whenTxt ? parseWhen(whenTxt) : null;
@@ -783,23 +849,24 @@ function draft() {
   const time = w?.time || p.time, daily = A.daily.checked || p.daily;
   let date = A.day.dataset.touched ? A.day.value : dayKey(addDays(keyDate(dk()), p.days));
   if (!A.day.dataset.touched && !daily && time && date === dk() && dailyMs(time) <= t) date = dayKey(addDays(keyDate(dk()), 1)); // already passed: tomorrow
-  const task = { id: crypto.randomUUID(), title: p.title, time, daily, date, alarm: A.alarm.checked && !!time };
-  const when = daily ? 'Every day' : dayLabel(date, keyDate(dk()));
-  const passed = !daily && time && date === dk() && dailyMs(time) + MIN <= t ? ' (already passed)' : '';
-  return { task, text: `${when}${time ? ' at ' + time : ''}: ${p.title}${task.alarm ? ', with alarm' : ''}${passed}` };
+  const task = { id: crypto.randomUUID(), title: p.title, time, daily, date, alarm: A.alarm.checked && !!time, lead: +A.lead.value };
+  const when = tr(daily ? 'Every day' : dayLabel(date, keyDate(dk()), LOC)) + (time ? (LANG === 'tr' ? ' ' : ' at ') + time : '');
+  const passed = !daily && time && date === dk() && dailyMs(time) + MIN <= t ? ` (${tr('already passed')})` : '';
+  const extra = [task.alarm && tr('with alarm'), time && task.lead && tr(`${task.lead} min heads-up`)].filter(Boolean).map(x => ', ' + x).join('');
+  return { task, text: `${when}: ${p.title}${extra}${passed}` };
 }
 function updAdder() {
   const d = draft(), timer = !!d.timer;
   $('aDayRow').hidden = $('aToggles').hidden = timer;
   if (d.task && !A.day.dataset.touched) A.day.value = d.task.date; // show where it will land (e.g. moved to tomorrow)
   for (const b of document.querySelectorAll('[data-d]')) b.classList.toggle('on', A.day.value === dayKey(addDays(keyDate(dk()), +b.dataset.d)));
-  $('aPreview').textContent = d.err || d.text || 'Name it, then add a time (14:30) or a timer length (20m).';
+  $('aPreview').textContent = tr(d.err || d.text || 'Name it, then add a time (14:30) or a timer length (20m).');
   $('aPreview').classList.toggle('err', !!d.err);
   $('aAdd').disabled = !d.task && !d.timer;
 }
 $('fab').onclick = () => openAdder($('adder').hidden);
 $('aCancel').onclick = () => openAdder(false);
-for (const i of [A.title, A.when, A.daily, A.alarm]) i.oninput = updAdder;
+for (const i of [A.title, A.when, A.daily, A.alarm, A.lead]) i.oninput = updAdder;
 A.day.onchange = () => { A.day.dataset.touched = '1'; updAdder(); };
 for (const b of document.querySelectorAll('[data-d]')) b.onclick = () => {
   A.day.value = dayKey(addDays(keyDate(dk()), +b.dataset.d));
@@ -811,7 +878,11 @@ $('adder').onsubmit = e => {
   e.preventDefault();
   const d = draft();
   if (d.timer) { S.timers.push(d.timer); lastAdded = d.timer.id; log(`Timer: ${d.timer.label}, ${dur((d.timer.endsAt - now()) / 1000)}`); }
-  else if (d.task) { S.tasks.push(d.task); lastAdded = d.task.id; log('Added: ' + d.task.title); }
+  else if (d.task) {
+    S.tasks.push(d.task); lastAdded = d.task.id; log('Added: ' + d.task.title);
+    S.settings.gcal = A.gcal.checked; // remembered for next time
+    if (A.gcal.checked) openLink(gcalLink(d.task)); // opens Google Calendar with the event filled in; Save there
+  }
   else return;
   openAdder(false);
   changed();
@@ -829,6 +900,7 @@ $('quiet').onclick = () => {
 };
 $('doneToggle').onclick = () => { showDone = !showDone; planKey = ''; tick(); };
 $('histToggle').onclick = () => { showHist = !showHist; planKey = ''; tick(); };
+$('notesToggle').onclick = () => { showNotes = !showNotes; planKey = ''; tick(); };
 $('testAlert').onclick = () => nudge('Drink water', '💧');
 document.querySelector('[data-s=volume]').addEventListener('change', () => setTimeout(sfx, 0, 'remind')); // after the setting saves: hear the new level
 $('askNo').onclick = () => $('ask').close();
@@ -841,12 +913,17 @@ $('addRem').onsubmit = e => {
   changed();
 };
 $('calSync').onclick = syncCal;
+// Corner widget: a corner of the screen, or docked on the taskbar.
+const renderPip = () => { for (const b of document.querySelectorAll('[data-pip]')) b.classList.toggle('on', b.dataset.pip === S.settings.pipAt); };
+for (const b of document.querySelectorAll('[data-pip]')) b.onclick = () => { S.settings.pipAt = b.dataset.pip; desk?.pipAt(b.dataset.pip); renderPip(); save(); };
+renderPip();
 
 function show(view) {
   for (const v of ['home', 'settings', 'week', 'intro']) $(v).hidden = v !== view;
   $('fab').hidden = view !== 'home';
   openAdder(false);
   if (view === 'week') { $('week').dataset.k = ''; renderWeek(now()); }
+  if (view === 'settings') for (const sel of $('settings').querySelectorAll('select[hidden]')) sel.syncSeg?.();
   scrollTo(0, 0);
   if (view !== 'home') { const h = $(view).querySelector('h1, h2'); h?.setAttribute('tabindex', '-1'); h?.focus(); }
 }
@@ -863,34 +940,61 @@ $('addCal').onsubmit = e => {
   const v = Object.fromEntries(new FormData(e.target));
   const name = v.name.trim(), url = icsUrl(v.url);
   if (!name || !url) return;
-  if (!/^https?:\/\//i.test(url)) { $('calStatus').textContent = 'That is not a web link. Paste the iCal address that starts with https://'; return; }
-  let nm = name;
-  for (let i = 2; S.cals.some(c => c.name === nm); i++) nm = `${name} ${i}`;
-  S.cals.push({ id: crypto.randomUUID(), name: nm, url, color: CAL_COLORS[S.cals.length % CAL_COLORS.length] });
+  if (!/^https?:\/\//i.test(url)) { $('calStatus').textContent = tr('That is not a web link. Paste the iCal address that starts with https://'); return; }
+  S.cals.push({ id: crypto.randomUUID(), name: freeName(name), url, color: CAL_COLORS[S.cals.length % CAL_COLORS.length] });
   e.target.reset();
   syncCal();
 };
+const freeName = name => { let nm = name; for (let i = 2; S.cals.some(c => c.name === nm); i++) nm = `${name} ${i}`; return nm; };
+// No secret iCal address (work accounts can hide it)? Import Google's export (.zip) or any .ics file instead.
+// It's a snapshot: importing a newer export of the same calendar replaces it.
+$('calImport').onclick = () => $('calFile').click();
+$('calFile').onchange = async e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  let n = 0, err = 'No calendar found in that file.';
+  for (const f of files) try {
+    const list = /\.zip$/i.test(f.name) ? await unzip(await f.arrayBuffer()) : [{ name: f.name, text: await f.text() }];
+    for (const x of list) {
+      if (!/BEGIN:VCALENDAR/i.test(x.text)) continue;
+      const name = x.name.replace(/\.ics$/i, '').replace(/@.*$/, '').replace(/_/g, ' ').trim().slice(0, 40) || 'Calendar';
+      const old = S.cals.find(c => c.file && c.name === name), id = old?.id || crypto.randomUUID();
+      localStorage.setItem(fileKey(id), pruneIcs(x.text, dayStart())); // before adding, so a file too big to keep adds nothing
+      if (!old) S.cals.push({ id, name: freeName(name), url: 'file', file: true, color: CAL_COLORS[S.cals.length % CAL_COLORS.length] });
+      n++;
+    }
+  } catch (x) { if (x?.name === 'QuotaExceededError') err = 'That file is too big to keep. Export one calendar at a time.'; }
+  await syncCal();
+  $('calStatus').textContent = tr(n ? `Imported ${n} ${n === 1 ? 'calendar' : 'calendars'}` : err);
+};
+try { $('lang').value = localStorage.getItem('lumina:lang') || 'auto'; } catch {}
+$('lang').onchange = e => { try { localStorage.setItem('lumina:lang', e.target.value); } catch {} backup(); location.reload(); };
 
 for (const inp of document.querySelectorAll('[data-s],[data-g]')) {
   const obj = inp.dataset.s ? S.settings : S.guards, k = inp.dataset.s || inp.dataset.g;
   const prop = inp.type === 'checkbox' ? 'checked' : 'value';
   inp[prop] = obj[k];
   inp.onchange = () => {
-    const num = inp.type === 'number' || (inp.tagName === 'SELECT' && /^\d+$/.test(inp.value));
+    const num = inp.type === 'number' || inp.type === 'range' || (inp.tagName === 'SELECT' && /^\d+$/.test(inp.value));
     const v = inp.type === 'checkbox' ? inp.checked : num ? parseFloat(inp.value) : inp.value;
     if ((v === '' && inp.tagName !== 'TEXTAREA') || Number.isNaN(v) || (inp.type === 'number' && v < +inp.min)) return (inp[prop] = obj[k]);
     obj[k] = v;
     if (k === 'login') desk?.login(v);
+    if (k === 'warm' || k === 'dim') tintTest = Date.now() + 4000; // show the new level for a moment, even in daytime
     if (!S.pomo.running && ['focus', 'short', 'long'].includes(k)) S.pomo.left = phaseLen(S.pomo.phase, S.settings);
     changed();
   };
 }
 
+// Friendlier controls over the plain ones, once their saved values are in.
+for (const i of $('settings').querySelectorAll('input[type=time]')) timeField(i);
+for (const sel of [document.querySelector('[data-s=theme]'), document.querySelector('[data-s=alert]'), $('lang')]) segSelect(sel);
+
 const toggleTest = () => { location.search = TEST ? '' : '?test'; };
 document.addEventListener('keydown', e => {
   const typing = e.target.closest('input, select, textarea');
   if (e.ctrlKey && e.shiftKey && e.code === 'KeyT') { e.preventDefault(); return toggleTest(); }
-  if ($('ask').open) return; // the dialog handles its own keys
+  if ($('ask').open || $('noteDlg').open) return; // dialogs handle their own keys
   if (e.key === 'Escape') { if (!$('adder').hidden) return openAdder(false); if (alert) return clearAlert(); if (!typing) show('home'); return; }
   if (typing || e.ctrlKey || e.altKey || e.metaKey) return;
   if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); toggle(); }
@@ -942,11 +1046,14 @@ if (TEST) {
 document.body.classList.toggle('is-desk', !!desk);
 if (desk) {
   setInterval(async () => { idleSec = await desk.idle(); }, 10000);
-  desk.onCmd(c => c === 'toggle' ? toggle() : c === 'brk' ? switchPhase() : c === 'ok' ? clearAlert() : c.startsWith('act:') ? act(+c.slice(4)) : c.startsWith('lock:') && lockCmd(c.slice(5)));
+  desk.onCmd(c => c === 'toggle' ? toggle() : c === 'brk' ? switchPhase() : c === 'ok' ? clearAlert() : c.startsWith('act:') ? act(+c.slice(4)) : c.startsWith('lock:') ? lockCmd(c.slice(5)) : c.startsWith('pip:') && (S.settings.pipAt = c.slice(4), renderPip(), save()));
   desk.onFg(w => { fg = w; checkLock(); });
   desk.lock(null); // a reload may have left the cover up
   $('toMini').onclick = () => desk.mini();
   $('quit').onclick = () => desk.close();
+  if (S.settings.login) desk.login(true); // re-register this exe: an older portable Lumina registered its own path
+  backup(); // right away, so data from an older Lumina is on disk from the first run of this one
+  setInterval(backup, 10 * MIN);
 }
 // Phone / browser: installable and works offline (the desktop app loads files directly and doesn't need it).
 if (!desk && location.protocol.startsWith('http')) navigator.serviceWorker?.register('sw.js').catch(() => {});
