@@ -241,7 +241,8 @@ main { padding: 2px 14px 96px; max-width: 560px; margin: 0 auto; }
 .cinfo small { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calform { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .calform input[name=name] { flex: 1 1 120px; }
-.calform input[name=url] { flex: 3 1 200px; }
+.calform input[name=url] { flex: 1 1 100%; order: 1; } /* the link is long: its own full row */
+.calform button { order: 2; }
 .grid label > span { display: flex; align-items: center; gap: 6px; }
 #settings .list { list-style: none; margin: 0; padding: 0; }
 #settings .list li { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 10px; }
@@ -364,6 +365,18 @@ body:not(.is-desk):not(.is-test) .desk-or-test { display: none !important; }
 .sect[open] > summary::after { transform: rotate(-135deg); }
 .sect > summary:hover { background: var(--hover); }
 #settings .sect > summary h2 { margin: 12px 6px; }
+/* settings footer: update notice, quiet links, the version at the very bottom */
+.sfoot { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--line); text-align: center; }
+.upd { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 14px; padding: 10px 10px 10px 16px; border-radius: 14px; background: var(--glow-soft); font-weight: 700; text-align: left; }
+.slinks { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 4px; }
+.slinks button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.slinks button:hover { color: var(--ink); background: var(--hover); }
+.slinks svg { width: 15px; height: 15px; }
+.ver { margin: 10px 0 0; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+/* one small glowing icon per section, so you find it at a glance */
+.sico { display: grid; place-items: center; width: 34px; height: 34px; margin-left: 4px; border-radius: 50%; background: var(--glow-soft); color: var(--glow); flex: none; }
+.sico svg { width: 19px; height: 19px; }
+.sect > summary:hover .sico, .sect[open] .sico { background: var(--glow); color: var(--bg); }
 #settings .sect > summary h2 small { display: block; margin: 2px 0 0; font-size: 12px; }
 .sect[open] { padding-bottom: 14px; }
 .more > summary { cursor: pointer; color: var(--muted); font-size: 12.5px; font-weight: 600; margin-top: 8px; }
@@ -374,26 +387,34 @@ body:not(.is-desk):not(.is-test) .desk-or-test { display: none !important; }
 .pippick button { position: absolute; width: 52px; height: 20px; padding: 0; border-radius: 6px; border: 1px dashed var(--muted); }
 .pippick [data-pip=tl] { top: 8px; left: 8px; } .pippick [data-pip=tr] { top: 8px; right: 8px; }
 .pippick [data-pip=bl] { bottom: 30px; left: 8px; } .pippick [data-pip=br] { bottom: 30px; right: 8px; }
+.pippick [data-pip=tc] { top: 8px; left: calc(50% - 26px); } .pippick [data-pip=bc] { bottom: 30px; left: calc(50% - 26px); }
 .pippick .tb { left: 0; right: 0; bottom: 0; width: auto; height: 20px; border: 0; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; background: var(--hover); font-size: 11px; font-weight: 700; color: var(--muted); }
 .pippick button:hover { border-color: var(--ink); }
 .pippick button.on { border: 0; background: var(--accent); color: #fff; }
-/* the widget docked on the taskbar: one slim line in the taskbar's own tone, its ends fading into it */
+/* the widget docked on the taskbar: no background of its own, only the time and buttons in the taskbar's tone */
 body.pip.slim { padding: 0; }
 body.pip.slim[data-bar=dark] { --tb: #1c1c1cE6; --ink: #F3F3F3; --muted: #C8C8C8; --hover: #ffffff1a; --bg: #1c1c1c; }
 body.pip.slim[data-bar=light] { --tb: #EEEEEEE6; --ink: #1a1a1a; --muted: #4a4a4a; --hover: #0000000f; --bg: #eeeeee; }
-body.pip.slim .pill { border: 0; border-radius: 0; box-shadow: none; padding: 0 18px; background: var(--tb);
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 16px), transparent); }
+body.pip.slim .pill { border: 0; border-radius: 0; box-shadow: none; padding: 0 12px; background: #80808003; } /* near-invisible, still catches the mouse for dragging */
+body.pip.slim:has(.palert:not([hidden])) .pill { box-shadow: inset 0 -2px 0 var(--accent); animation: none; }
 body.pip.slim #time { font-size: 16px; color: var(--ink); }
 body.pip.slim .prow { gap: 6px; }
 body.pip.slim .icon { width: 32px; height: 32px; }
 body.pip.slim .icon svg { width: 19px; height: 19px; }
 body.pip.slim.small .prow > :not(.dot, #time), body.pip.slim.small .palert { display: none; }
 body.pip.slim.small .prow { justify-content: center; }
+/* on a screen edge: a square with only the minutes, in the phase colour */
+.mins { display: none; }
+body.pip.edge.small .pill { padding: 0; justify-content: center; }
+body.pip.edge.small .prow, body.pip.edge.small .palert { display: none; }
+body.pip.edge.small .mins { display: block; font: 600 24px var(--digits); font-variant-numeric: tabular-nums; color: var(--muted); }
+body.pip.edge.small.running .mins { color: var(--accent); }
 
 /* settings: one setting per row, its help line right under it */
 #settings .grid { grid-template-columns: 1fr; gap: 0; }
 #settings .grid > label, #settings .grid > .row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; min-height: 46px; padding: 4px 6px; border-top: 1px solid var(--line); }
 #settings .grid > :first-child { border-top: 0; }
+#settings .sect > label.chk { min-height: 46px; padding: 4px 6px; } /* a switch straight in a section (focus lock): a full row, so the hint below never overlaps it */
 #settings .grid label span { color: inherit; font-size: inherit; }
 #settings .grid label > span:last-child:has(input), #settings .unit { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
 #settings input[type=number] { width: 4.5em; text-align: center; }

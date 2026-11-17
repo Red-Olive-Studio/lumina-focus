@@ -269,12 +269,21 @@ export const joinLink = t => (t && t.match(JOIN)?.[0].replace(/[).,;]+$/, '')) |
 // People paste the calendar's web page link instead of its iCal file; turn the common ones into the file link.
 export function icsUrl(u) {
   u = u.trim().replace(/^webcal:/i, 'https:');
+  // A public Google calendar needs no secret link: its ID (often just the owner's email) is enough.
+  if (/^[^\s@/:]+@[^\s@/]+\.[^\s@/]+$/.test(u)) return `https://calendar.google.com/calendar/ical/${encodeURIComponent(u)}/public/basic.ics`;
   try {
     const x = new URL(u), cid = x.searchParams.get('cid'), src = x.searchParams.get('src') || (cid && atob(cid.replace(/-/g, '+').replace(/_/g, '/')));
     if (x.hostname === 'calendar.google.com' && !x.pathname.endsWith('.ics') && src) return `https://calendar.google.com/calendar/ical/${encodeURIComponent(src)}/public/basic.ics`;
     if (/outlook\.(office365|live)\.com$/.test(x.hostname) && x.pathname.endsWith('/calendar.html')) return u.replace(/calendar\.html/, 'calendar.ics');
   } catch {}
   return u;
+}
+
+// Is version a (e.g. "0.10.0") newer than b ("0.9.1")?
+export function newer(a, b) {
+  const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
 }
 
 // History, grouped by day: newest day first, entries within a day oldest first.

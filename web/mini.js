@@ -13,6 +13,7 @@ desk.onState(s => {
   document.body.classList.toggle('running', s.running);
   $('toggle').ariaLabel = tr(s.running ? 'Pause' : 'Start');
   $('time').textContent = s.time;
+  $('mins').textContent = Math.ceil(s.time.split(':').reduce((a, b) => a * 60 + +b, 0) / 60); // the edge square: minutes only
   $('next').textContent = s.next;
   $('next').title = s.nextFull;
   $('normal').hidden = !!s.alert;
@@ -28,9 +29,11 @@ desk.onState(s => {
     ? { className: 'tick', innerHTML: TICK, title: tr('Done'), ariaLabel: tr('Done'), onclick: () => desk.cmd('act:' + i) }
     : { className: 'soft', textContent: tr(a), onclick: () => desk.cmd('act:' + i) })));
 });
-// Docked on the taskbar: one slim line in the taskbar's own tone; folded to the dot and the time until the mouse comes by.
+// Docked on the taskbar: no background, just the time and buttons in the taskbar's own tone; folded to the dot and the time until the mouse comes by.
+// On a screen edge: a square with the minutes left until the mouse comes by.
 desk.onSlim(d => {
   document.body.classList.toggle('slim', !!d?.dock);
+  document.body.classList.toggle('edge', !!d?.edge);
   document.body.classList.toggle('small', !!d?.small);
   document.body.dataset.bar = d?.light ? 'light' : 'dark';
 });

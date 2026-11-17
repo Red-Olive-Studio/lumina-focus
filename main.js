@@ -59,24 +59,41 @@ function createPip() {
   pip.loadFile(web('mini.html'));
   pip.webContents.on('did-finish-load', sendSlim);
   if (saved.pipDock) placePip('taskbar', saved.pip?.x);
-  // Dropped onto the taskbar: it docks there as one slim line. Dragged back up: a normal pill again.
+  else if (saved.pipEdge) placeEdge(saved.pip?.y ?? at.y, saved.pipEdge);
+  // Dropped onto the taskbar: it docks there as one slim line. Pushed against the left or right edge: a small square.
+  // Dropped near a corner or the middle of the top or bottom: it snaps there, like a magnet. Anywhere else: it stays put.
   pip.on('moved', () => {
-    const p = pip.getBounds(), a = screen.getDisplayMatching(p).workArea, low = p.y + p.height / 2 > a.y + a.height;
-    if (low && (!saved.pipDock || p.y !== a.y + a.height)) tellPip(placePip('taskbar', p.x));
-    else if (!low && saved.pipDock) {
-      setSlim(false);
+    const p = pip.getBounds(), d = screen.getDisplayMatching(p), a = d.workArea, b = d.bounds, low = p.y + p.height / 2 > a.y + a.height;
+    const side = p.x <= b.x + 2 ? 'l' : p.x + p.width >= b.x + b.width - 2 ? 'r' : '';
+    const spot = SPOTS.find(w => { const q = spotAt(w, a); return Math.hypot(q.x - p.x, q.y - p.y) < 70; });
+    if (low) { if (!saved.pipDock || p.y !== a.y + a.height) tellPip(placePip('taskbar', p.x)); }
+    else if (side) { placeEdge(p.y, side); tellPip('edge'); }
+    else if (spot) tellPip(placePip(spot));
+    else if (mode()) {
+      setMode('');
       pip.setBounds({ x: Math.min(p.x, a.x + a.width - PIP.w), y: Math.min(p.y, a.y + a.height - PIP.h - 8), width: PIP.w, height: PIP.h });
       tellPip('');
-    }
+    } else tellPip('');
     remember('pip', pip);
   });
+  // Folded (on the taskbar or a screen edge) it stays small, so it drags around easily; a double-click opens it up.
+  // WM_NCLBUTTONDBLCLK: the pill is a drag area, so the page never sees the click; the widget can't maximize, so nothing else happens.
+  if (process.platform === 'win32') pip.hookWindowMessage(0x00A3, () => { if (small) awayAt = Date.now(); });
   pip.on('close', e => { if (!quitting) { e.preventDefault(); showMain(); } }); // Alt+F4 on the widget opens Lumina
 }
 
 // Docked: over the taskbar (itself always on top), in its light or dark tone, folded to the dot and the time when the mouse is away.
+// On a screen edge: folded to a square with the minutes left, unfolded while the mouse is on it or an alert is up.
 let small = false, lightBar = false, awayAt = 0;
-const sendSlim = () => pip.webContents.send('slim', { dock: !!saved.pipDock, small, light: lightBar });
-const setSlim = on => { saved.pipDock = on; small = false; awayAt = Date.now(); pip.setAlwaysOnTop(true, on ? 'screen-saver' : 'floating'); readBar(); sendSlim(); };
+const mode = () => saved.pipDock ? 'taskbar' : saved.pipEdge ? 'edge' : '';
+const sendSlim = () => pip.webContents.send('slim', { dock: !!saved.pipDock, edge: !!saved.pipEdge, small, light: lightBar });
+function setMode(m, side = '', fold = false) {
+  saved.pipDock = m === 'taskbar';
+  saved.pipEdge = m === 'edge' && side;
+  small = fold; awayAt = fold ? 0 : Date.now(); // folded on purpose: stay folded, not open again for a moment
+  pip.setAlwaysOnTop(true, saved.pipDock ? 'screen-saver' : 'floating');
+  readBar(); sendSlim();
+}
 // shortcut: only the light/dark taskbar tone; an accent-coloured taskbar (Settings → Colours) gets the dark one.
 function readBar() {
   execFile('reg', ['query', String.raw`HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, '/v', 'SystemUsesLightTheme'], { windowsHide: true }, (err, out) => {
@@ -84,39 +101,51 @@ function readBar() {
     if (l !== lightBar) { lightBar = l; if (pip && !pip.isDestroyed()) sendSlim(); }
   });
 }
-const SMALL_W = 116, FOLD_MS = 5000;
+const SMALL_W = 116, FOLD_MS = 5000, EDGE_FOLD_MS = 2000;
 // Polled rather than DOM hover: most of the pill is a drag area, which gets no mouse events.
+// Opens on a double-click or an alert; folds again once the mouse has been away for a moment.
 setInterval(() => {
-  if (!pip || pip.isDestroyed() || !saved.pipDock || !pip.isVisible()) return;
+  if (!pip || pip.isDestroyed() || !mode() || !pip.isVisible()) return;
   const c = screen.getCursorScreenPoint(), b = pip.getBounds(), inside = c.x >= b.x && c.x < b.x + b.width && c.y >= b.y && c.y < b.y + b.height;
-  if (inside || alerting) awayAt = Date.now();
-  const want = Date.now() - awayAt > FOLD_MS;
+  if (alerting || (inside && !small)) awayAt = Date.now(); // hovering keeps it open, but never opens it
+  const want = Date.now() - awayAt > (saved.pipEdge ? EDGE_FOLD_MS : FOLD_MS);
   if (want === small) return;
   small = want;
   // Unfold to the left when there's no room on the right; fold back to the same spot.
-  const d = screen.getDisplayMatching(b).bounds, w = small ? SMALL_W : PIP.w;
+  const d = screen.getDisplayMatching(b).bounds, w = !small ? PIP.w : saved.pipEdge ? PIP.h : SMALL_W;
   const x = small ? (b.x + b.width >= d.x + d.width - 1 ? d.x + d.width - w : b.x) : Math.min(b.x, d.x + d.width - w);
   pip.setBounds({ x, y: b.y, width: w, height: b.height });
   sendSlim();
 }, 250);
 const tellPip = where => win?.webContents.send('cmd', 'pip:' + where); // Settings shows where the widget is
-// A corner of the screen the widget is on, or the taskbar: as tall as the taskbar, near its right end or where it was dropped.
+// Spots the widget snaps to: the four corners and the middle of the top and bottom edges (t/b, then l/c/r).
+const SPOTS = ['tl', 'tc', 'tr', 'bl', 'bc', 'br'];
+const spotAt = (where, a) => ({
+  x: where[1] === 'l' ? a.x + 8 : where[1] === 'r' ? a.x + a.width - PIP.w - 8 : Math.round(a.x + (a.width - PIP.w) / 2),
+  y: where[0] === 't' ? a.y + 8 : a.y + a.height - PIP.h - 8,
+});
+// A spot on the screen the widget is on, or the taskbar: as tall as the taskbar, near its right end or where it was dropped.
 // shortcut: only a taskbar along the bottom; a side or auto-hidden one gets the bottom-right corner instead.
 function placePip(where, x) {
   const d = screen.getDisplayMatching(pip.getBounds()), a = d.workArea, b = d.bounds, bar = b.y + b.height - (a.y + a.height);
   if (where === 'taskbar' && bar < 24) where = 'br';
-  const dock = where === 'taskbar', w = PIP.w, h = dock ? bar : PIP.h;
-  setSlim(dock);
-  pip.setBounds({
-    width: w, height: h,
-    x: dock ? Math.min(Math.max(x ?? a.x + a.width - w - 300, b.x), b.x + b.width - w) : where[1] === 'l' ? a.x + 8 : a.x + a.width - w - 8,
-    y: dock ? a.y + a.height : where[0] === 't' ? a.y + 8 : a.y + a.height - h - 8,
-  });
+  const dock = where === 'taskbar';
+  setMode(dock ? 'taskbar' : '');
+  pip.setBounds(dock
+    ? { width: PIP.w, height: bar, x: Math.min(Math.max(x ?? a.x + a.width - PIP.w - 300, b.x), b.x + b.width - PIP.w), y: a.y + a.height }
+    : { width: PIP.w, height: PIP.h, ...spotAt(where, a) });
   remember('pip', pip);
   return where;
 }
+// Flush against the left or right edge of the screen, folded to a square.
+function placeEdge(y, side) {
+  const d = screen.getDisplayMatching(pip.getBounds()), a = d.workArea, b = d.bounds, w = PIP.h;
+  setMode('edge', side, true);
+  pip.setBounds({ width: w, height: PIP.h, x: side === 'r' ? b.x + b.width - w : b.x, y: Math.min(Math.max(y, a.y), a.y + a.height - PIP.h) });
+  remember('pip', pip);
+}
 ipcMain.on('pipAt', (e, where) => {
-  if (e.sender !== win.webContents || !/^(tl|tr|bl|br|taskbar)$/.test(where)) return;
+  if (e.sender !== win.webContents || !/^(tl|tc|tr|bl|bc|br|taskbar)$/.test(where)) return;
   tellPip(placePip(where));
   pip.showInactive(); // show it there for a moment
   setTimeout(syncPip, 3000);
@@ -144,6 +173,7 @@ function setTint(lv) {
 function displaysChanged() {
   if (tints.length) { const lv = tintLv; setTint(null); setTint(lv); }
   if (saved.pipDock) placePip('taskbar', pip.getBounds().x);
+  else if (saved.pipEdge) placeEdge(pip.getBounds().y, saved.pipEdge);
   covers.forEach(c => c.destroy()); covers = [];
   if (lockState) showCovers(lockState);
 }
@@ -184,7 +214,7 @@ ipcMain.on('flash', () => { if (!win.isFocused()) win.flashFrame(true); });
 ipcMain.on('tint', (_, lv) => setTint(lv && typeof lv === 'object' ? lv : lv ? { warm: 16, dim: 0 } : null));
 // The portable exe unpacks to a temp folder each run; register the exe itself.
 // Only the packaged app: from `npm start` it would register a bare electron.exe.
-ipcMain.on('login', (_, on) => app.isPackaged && app.setLoginItemSettings({ openAtLogin: !!on, path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath }));// The page already gave the user 60 seconds to cancel, so these act right away.
+ipcMain.on('login', (_, on) => app.isPackaged && app.setLoginItemSettings({ openAtLogin: !!on, path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath }));// The page already warned 5 and 1 minutes before, so these act right away. No /f: apps with unsaved work still get to ask.
 const POWER = {
   shutdown: ['shutdown', ['/s', '/t', '0']],
   sleep: ['rundll32.exe', ['powrprof.dll,SetSuspendState', '0,1,0']], // hibernates instead if hibernation is on
@@ -258,6 +288,15 @@ if($d.Length -lt 26 -or $d[0] -ne 0x43 -or $d[19] -ne 0x43){exit 1};$is=$d[23] -
 if($want){$n=[byte[]]($d[0..22]+[byte[]](2,1)+$d[23..($d.Length-1)]);$n[18]=$d[18]+2}else{$n=[byte[]]($d[0..22]+$d[25..($d.Length-1)]);$n[18]=$d[18]-2}
 for($i=10;$i -lt 15;$i++){if($n[$i] -ne 0xff){$n[$i]++;break}};Set-ItemProperty $k -Name Data -Value $n -Type Binary`;
 ipcMain.on('winNight', (_, on) => ps(nightPs(!!on), () => {}));
+// The newest release on GitHub, so Lumina can say an update is out. Nothing is sent; only the release's version is read.
+ipcMain.handle('version', async () => {
+  let latest = '';
+  try {
+    const r = await net.fetch('https://api.github.com/repos/Red-Olive-Studio/lumina-focus/releases/latest', { signal: AbortSignal.timeout(15000) });
+    if (r.ok) latest = String((await r.json()).tag_name || '').replace(/^v/, '');
+  } catch {} // offline: no notice
+  return { now: app.getVersion(), latest };
+});
 // Calendar feeds are fetched here, not in the page, so the page can keep its strict no-network policy.
 ipcMain.handle('ics', async (_, url) => {
   url = String(url).trim().replace(/^webcal:/i, 'https:');

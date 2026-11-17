@@ -1,4 +1,4 @@
-import { hm, nowMin, dayKey, keyDate, addDays, dayLabel, inWindow, since, nextPhase, phaseLen, fmt, dur, until, soon, normTime, parseAdd, parseWhen, streak, clockOf, calEvents, byDay, allowedWin, resizeMeals, icsUrl, pruneIcs, unzip, gcalLink } from './logic.js';
+import { hm, nowMin, dayKey, keyDate, addDays, dayLabel, inWindow, since, nextPhase, phaseLen, fmt, dur, until, soon, normTime, parseAdd, parseWhen, streak, clockOf, calEvents, byDay, allowedWin, resizeMeals, icsUrl, pruneIcs, unzip, gcalLink, newer } from './logic.js';
 import { tr, LANG, LOC, trDom } from './i18n.js';
 import { timeField, segSelect, swatches } from './ui.js';
 
@@ -18,7 +18,7 @@ const MEALS_V4 = [['breakfast', 'Breakfast', 3], ['snack1', 'Morning snack', 5],
 // Body reminders for long days at the PC. The first three are on by default, the rest are optional.
 const PRESETS = [
   ['water', '💧', 'Drink water', 45, true], ['posture', '🪑', 'Sit tall', 20, true], ['walk', '🚶', 'Stand and walk', 30, true],
-  ['eyes', '🔭', 'Look far away for 20 seconds', 20, false], ['stretch', '🧘', 'Stretch neck and wrists', 50, false],
+  ['eyes', '🔭', 'Look far for 20 s', 20, false], ['stretch', '🧘', 'Stretch neck and wrists', 50, false],
   ['breathe', '🫁', 'Three slow breaths', 60, false], ['air', '🪟', 'Fresh air', 120, false],
   ['commit', '💾', 'Save and commit', 60, false], ['inbox', '📨', 'Check messages', 90, false],
 ];
@@ -103,7 +103,8 @@ function load() {
   s.tasks = s.tasks.filter(x => x.daily || x.date >= today);
   for (const id in s.fired) if (s.fired[id] < today) delete s.fired[id];
   s.power = null; // a pending sleep/shutdown never survives a restart: its Cancel button is gone
-  for (const r of s.reminders) if (r.id === 'eyes' && r.text === 'Look far away, 20s') r.text = 'Look far away for 20 seconds'; // 0.8 wording, only if unedited
+  for (const tm of s.timers) delete tm.warned; // a sleep timer still running warns again
+  for (const r of s.reminders) if (r.id === 'eyes' && /^Look far away(, 20s| for 20 seconds)$/.test(r.text)) r.text = 'Look far for 20 s'; // older wordings, only if unedited
   const old = dayKey(t - 400 * 864e5); // keep a year of habit ticks and focus stats
   for (const k in s.done) if (k < old) delete s.done[k];
   for (const k in s.stats) if (k < old) delete s.stats[k];
@@ -222,17 +223,29 @@ function renderAlert() {
     ? el('button', { className: 'tick', innerHTML: ICON.check, title: 'Done', ariaLabel: 'Done', onclick: () => act(i) })
     : el('button', { className: 'soft small', textContent: l, onclick: () => act(i) })));
 }
-function clearAlert() { if (S.power) { S.power = null; save(); } alert = null; renderAlert(); tick(); } // dismissing a shutdown warning cancels it
+function clearAlert() { const p = alert?.acts.some(a => a[1] === cancelPower); alert = null; renderAlert(); p ? cancelPower() : tick(); } // dismissing a shutdown warning cancels it
 function act(i) { const a = alert?.acts[i]; clearAlert(); a?.[1](); }
 const later = z => ['In 10 min', () => { S.snooze.push({ ...z, at: now() + 10 * MIN }); save(); }];
 const taskAlert = t => notify({ raw: t.meal ? tr(t.title) : t.title }, 'alarm', [['Done', () => setDone(t, true)], later({ id: t.id, text: t.title })], !!t.alarm);
 
-// Sleep / shut down / lock, always with 60 seconds to cancel. Test mode only pretends.
+// Sleep / shut down / lock: a warning 5 minutes before and again 1 minute before, each with Cancel; then it happens.
+// Asleep at the desk, you miss the warnings and it goes ahead. Test mode only pretends.
 const POWER = { sleep: 'goes to sleep', shutdown: 'shuts down', lock: 'locks' };
-function powerSoon(action, why) {
-  if (!POWER[action]) return notify(why, 'alarm', [], true);
-  S.power = { action, at: now() + 60000 };
-  notify(`${why}. The PC ${POWER[action]} in 60 seconds.`, 'alarm', [['Cancel', () => { S.power = null; save(); }]], true);
+function powerWarn() {
+  const p = S.power, n = Math.max(1, Math.round((p.at - now()) / MIN));
+  notify(`${p.why}. PC ${POWER[p.action]} in ${n} min.`, 'alarm', [['Cancel', cancelPower]], true);
+}
+function powerSoon(action, why, at, timer) {
+  at = Math.max(at, now() + MIN); // started late (Lumina opened after the time): still a minute to cancel
+  S.power = { action, at, why, timer, last: at - now() <= 1.5 * MIN };
+  powerWarn();
+  save();
+}
+// Cancelling also stops the sleep timer that asked for it.
+function cancelPower() {
+  if (S.power?.timer) S.timers = S.timers.filter(x => x.id !== S.power.timer);
+  S.power = null;
+  changed();
 }
 const sleepTimer = () => S.timers.find(x => x.id === 'sleep');
 const SLEEPDO = { sleep: 'the PC sleeps', shutdown: 'the PC shuts down', lock: 'the PC locks', remind: 'you get a reminder' };
@@ -369,7 +382,7 @@ function schedulePhone(t) {
   for (const i of [...curPlan.up, ...curPlan.days.flatMap(([, xs]) => xs)]) {
     if (i.kind === 'remind' || !i.ms || i.allDay || (i.ev && leadOf(i.ev) < 0)) continue;
     const at = i.kind === 'event' ? i.ev.start - leadOf(i.ev) * MIN : i.ms;
-    const body = i.kind === 'event' ? `${i.title} at ${clockOf(i.ev.start)}` : i.kind === 'timer' ? `${i.title} is done` : i.kind === 'focus' ? (S.pomo.phase === 'focus' ? 'Focus done. Take a short break.' : 'Break is over. Back to focus.') : i.kind === 'prep' ? `Time to cook or order ${i.meal.title.toLowerCase()}` : i.title;
+    const body = i.kind === 'event' ? `${i.title} at ${clockOf(i.ev.start)}` : i.kind === 'timer' ? `${i.title} is done` : i.kind === 'focus' ? (S.pomo.phase === 'focus' ? 'Focus done. Short break.' : 'Break over. Back to focus.') : i.kind === 'prep' ? `Cook or order ${i.meal.title.toLowerCase()}` : i.title;
     if (at > t) items.push({ at, body: tr(body) });
     const lead = i.task ? taskLead(i.task) : 0;
     if (lead > 0 && i.ms - lead * MIN > t) items.push({ at: i.ms - lead * MIN, body: tr(`${i.title} at ${clockOf(i.ms)}`) });
@@ -486,7 +499,7 @@ function tick() {
   if (P.running && t >= P.endsAt) {
     const wasFocus = P.phase === 'focus';
     go(t, s.autoNext);
-    notify(wasFocus ? (P.phase === 'long' ? 'Focus done. Time for a long break.' : 'Focus done. Take a short break.') : 'Break is over. Back to focus.',
+    notify(wasFocus ? (P.phase === 'long' ? 'Focus done. Long break.' : 'Focus done. Short break.') : 'Break over. Back to focus.',
       wasFocus ? 'done' : 'alarm', s.autoNext ? [] : [[wasFocus ? 'Start break' : 'Start focus', toggle]]);
   }
   const due = S.snooze.filter(z => t >= z.at);
@@ -495,15 +508,22 @@ function tick() {
     const x = z.id && todays().find(y => y.id === z.id);
     x ? !isDone(x) && taskAlert(x) : notify(z.text, 'remind');
   }
+  // A sleep timer that sleeps or shuts down the PC warns 5 minutes before it ends.
+  for (const tm of S.timers) if (POWER[tm.power] && !tm.warned && !S.power && t >= tm.endsAt - 5 * MIN) {
+    tm.warned = true;
+    powerSoon(tm.power, tm.label || 'Timer', tm.endsAt, tm.id);
+  }
   for (const tm of S.timers.filter(x => t >= x.endsAt)) {
     S.timers = S.timers.filter(x => x !== tm);
     planKey = '';
     if (tm.id !== 'sleep') log(`Timer ended: ${tm.label || 'Timer'}`);
-    tm.power ? powerSoon(tm.power, `${tm.label || 'Timer'} ended`) : notify(`${tm.label || 'Timer'} is done`, 'alarm', [], true);
+    if (!POWER[tm.power]) notify(`${tm.label || 'Timer'} is done`, 'alarm', [], true); // the power action itself runs from S.power
   }
+  if (S.power && !S.power.last && t >= S.power.at - MIN) { S.power.last = true; save(); powerWarn(); }
   if (S.power && t >= S.power.at) {
     const a = S.power.action, late = t - S.power.at > 2 * MIN; // e.g. the PC was asleep: don't act on an old countdown
     S.power = null;
+    if (alert?.acts.some(x => x[1] === cancelPower)) { alert = null; renderAlert(); }
     if (late) save();
     else if (TEST) notify(`Test: the PC would ${{ sleep: 'go to sleep', shutdown: 'shut down', lock: 'lock' }[a]} now.`, 'remind');
     else desk?.power(a);
@@ -515,7 +535,7 @@ function tick() {
     const ms = taskMs(x);
     once('task:' + x.id, ms, () => taskAlert(x));
     if (taskLead(x) > 0) once('lead:' + x.id, ms - taskLead(x) * MIN, () => notify(`${x.title} at ${x.time}`, 'remind'));
-    if (x.meal && +s.prep > 0) once('prep:' + x.id, ms - s.prep * MIN, () => notify(`Time to cook or order ${x.title.toLowerCase()}`, 'remind'));
+    if (x.meal && +s.prep > 0) once('prep:' + x.id, ms - s.prep * MIN, () => notify(`Cook or order ${x.title.toLowerCase()}`, 'remind'));
   }
   for (const e of S.cal.events) if (!e.allDay && shown(e) && leadOf(e) >= 0)
     once(`cal:${e.start}:${e.title}`, e.start - leadOf(e) * MIN, () => notify(leadOf(e) ? `${e.title} at ${clockOf(e.start)}` : `${e.title} starts now`, 'remind', [...joinAct(e), ['Notes', () => openNote(e)]]));
@@ -534,7 +554,7 @@ function tick() {
   } else if (P.away) {
     if (P.away > 1) S.log.push({ at: P.away, end: t, text: 'Away from the screen', kind: 'break' }); // older data stored `true`
     P.away = false;
-    notify("You're back. Focus is paused.", 'remind', [['Continue', toggle]]);
+    notify('Welcome back. Focus paused.', 'remind', [['Continue', toggle]]);
   }
   if (awake && !away && !quiet) for (const r of S.reminders) {
     if (!r.on) continue;
@@ -544,11 +564,11 @@ function tick() {
   const atScreen = (t - S.lastBreak) / MIN;
   if (g.screen && awake && !quiet && P.phase === 'focus' && atScreen >= g.screenLimit && t - (S.last.screen || 0) >= 30 * MIN) {
     S.last.screen = t;
-    nudge(`${dur(atScreen * 60)} at the screen. Look away.`, '🔭');
+    nudge(`${dur(atScreen * 60)} on screen. Look away.`, '🔭');
   }
   if (g.sleep && !awake && !away && !quiet && t - (S.last.sleep || 0) >= 15 * MIN) {
     S.last.sleep = t;
-    nudge(`It's past bedtime (${s.bed}).`, '🌙');
+    nudge('Past bedtime. Time to sleep.', '🌙');
   }
   const night = (g.night && inWindow(nowMin(new Date(t)), hm(g.nightAt), hm(s.wake))) || Date.now() < tintTest;
   if (desk) {
@@ -559,7 +579,7 @@ function tick() {
   }
   checkLock();
   if (g.night) once('night', dailyMs(g.nightAt, t), () => nudge(desk ? 'Warm night light on' : 'Turn on Night light', '🌇'));
-  if (g.shutdown && (desk || TEST)) once('shutdown', dailyMs(g.shutdownAt, t), () => powerSoon('shutdown', 'Bedtime'));
+  if (g.shutdown && (desk || TEST) && !S.power) { const at = dailyMs(g.shutdownAt, t); once('shutdown', at - 5 * MIN, () => powerSoon('shutdown', 'Bedtime', at)); }
 
   if (alert && !away) {
     const r = Date.now();
@@ -925,6 +945,22 @@ $('addRem').onsubmit = e => {
   changed();
 };
 $('calSync').onclick = syncCal;
+for (const b of document.querySelectorAll('[data-link]')) b.onclick = () => openLink(b.dataset.link);
+// Desktop: the version at the bottom of Settings, and a notice once when a newer one is on GitHub.
+async function checkUpdate() {
+  const v = await desk.version().catch(() => null);
+  if (!v) return;
+  $('ver').hidden = false;
+  $('ver').textContent = 'Lumina ' + v.now;
+  const up = !!v.latest && newer(v.latest, v.now);
+  $('upd').hidden = !up;
+  if (!up) return;
+  $('updText').textContent = tr(`Lumina ${v.latest} is out`);
+  if (S.updSeen === v.latest) return;
+  S.updSeen = v.latest;
+  save();
+  notify(`Lumina ${v.latest} is out`, 'remind', [['Download', () => openLink('https://github.com/Red-Olive-Studio/lumina-focus/releases/latest')]], false, '✨');
+}
 // Corner widget: a corner of the screen, or docked on the taskbar.
 const renderPip = () => { for (const b of document.querySelectorAll('[data-pip]')) b.classList.toggle('on', b.dataset.pip === S.settings.pipAt); };
 for (const b of document.querySelectorAll('[data-pip]')) b.onclick = () => { S.settings.pipAt = b.dataset.pip; desk?.pipAt(b.dataset.pip); renderPip(); save(); };
@@ -1034,18 +1070,18 @@ if (TEST) {
     ['Alarm', () => notify('Wake-up alarm', 'alarm', [['Stop', () => {}]], true)],
     ['Reminder', () => nudge('Sit tall', '🪑')],
     ['Meal', () => taskAlert(meal())],
-    ['Cook/order', () => notify(`Time to cook or order ${meal().title.toLowerCase()}`, 'remind')],
+    ['Cook/order', () => notify(`Cook or order ${meal().title.toLowerCase()}`, 'remind')],
     ['Calendar', () => notify(`Design review at ${clockOf(now() + 10 * MIN)}`, 'remind')],
     ['Timer', () => notify('Tea is done', 'alarm', [], true)],
-    ['Focus done', () => notify('Focus done. Take a short break.', 'done')],
-    ['Break over', () => notify('Break is over. Back to focus.', 'alarm')],
-    ['Screen time', () => nudge('1h 30m at the screen. Look away.', '🔭')],
+    ['Focus done', () => notify('Focus done. Short break.', 'done')],
+    ['Break over', () => notify('Break over. Back to focus.', 'alarm')],
+    ['Screen time', () => nudge('1h 30m on screen. Look away.', '🔭')],
     ['Away / back', () => { S.pomo.away = now() - 10 * MIN; }],
-    ['Bedtime', () => nudge(`It's past bedtime (${S.settings.bed}).`, '🌙')],
+    ['Bedtime', () => nudge('Past bedtime. Time to sleep.', '🌙')],
     ['Night light', () => { tintTest = Date.now() + 5000; nudge('Warm night light on (5 s in test)', '🌇'); }],
     ['Sleep timer 1 min', () => { S.timers = S.timers.filter(x => x.id !== 'sleep'); S.timers.push({ id: 'sleep', label: 'Sleep timer', endsAt: now() + MIN, power: S.settings.sleepAction }); planKey = ''; }],
-    ['Bedtime shutdown', () => powerSoon('shutdown', 'Bedtime')],
-    ['Lock', () => powerSoon('lock', 'Sleep timer ended')],
+    ['Bedtime shutdown', () => powerSoon('shutdown', 'Bedtime', now() + 5 * MIN)],
+    ['Lock', () => powerSoon('lock', 'Sleep timer', now() + MIN)],
     ['Widget', () => desk?.mini()],
     ['Reset test data', () => { localStorage.removeItem(KEY); location.reload(); }],
   ].map(([l, f]) => btn(l, f)));
@@ -1066,6 +1102,8 @@ if (desk) {
   if (S.settings.login) desk.login(true); // re-register this exe: an older portable Lumina registered its own path
   backup(); // right away, so data from an older Lumina is on disk from the first run of this one
   setInterval(backup, 10 * MIN);
+  checkUpdate();
+  setInterval(checkUpdate, 6 * 60 * MIN);
 }
 // Phone / browser: installable and works offline (the desktop app loads files directly and doesn't need it).
 if (!desk && location.protocol.startsWith('http')) navigator.serviceWorker?.register('sw.js').catch(() => {});

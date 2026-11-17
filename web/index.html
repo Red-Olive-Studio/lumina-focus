@@ -179,8 +179,8 @@
   <button type="button" class="back" data-back>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>Back
   </button>
-  <details class="sect">
-  <summary><h2>Focus <small>timer lengths</small></h2></summary>
+  <details class="sect" name="sect">
+  <summary><span class="sico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg></span><h2>Focus <small>timer lengths</small></h2></summary>
   <div class="grid">
     <label>Focus <span><input type="number" min="1" data-s="focus" aria-label="Focus, minutes"> min</span></label>
     <label>Break <span><input type="number" min="1" data-s="short" aria-label="Break, minutes"> min</span></label>
@@ -192,8 +192,8 @@
   </div>
   </details>
 
-  <details class="sect">
-  <summary><h2>My day <small>wake-up, bedtime, task heads-up</small></h2></summary>
+  <details class="sect" name="sect">
+  <summary><span class="sico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></svg></span><h2>My day <small>wake-up, bedtime, task heads-up</small></h2></summary>
   <div class="grid">
     <label>Wake up <input type="time" data-s="wake"></label>
     <label>Bedtime <input type="time" data-s="bed"></label>
@@ -206,8 +206,8 @@
   </div>
   </details>
 
-  <details class="sect">
-  <summary><h2>Meals <small>how many, when</small></h2></summary>
+  <details class="sect" name="sect">
+  <summary><span class="sico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 21V3c-2 1.5-3 4-3 7h3"/></svg></span><h2>Meals <small>how many, when</small></h2></summary>
   <div class="grid">
     <label>Meals a day <input type="number" id="mealCount" min="0" max="12" aria-label="Meals a day (0 = none)"></label>
     <label><span>Cook-or-order</span><span><input type="number" min="0" data-s="prep" aria-label="Cook-or-order nudge, min before (0 = off)"> min</span></label>
@@ -217,8 +217,8 @@
   <p class="hint">Each meal gets its own reminder. Rename them, change the time, or remove one with ×.</p>
   </details>
 
-  <details class="sect">
-  <summary><h2>Reminders <small>water, posture, eyes, a walk</small></h2></summary>
+  <details class="sect" name="sect">
+  <summary><span class="sico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c3 3.6 5.5 6.7 5.5 10a5.5 5.5 0 0 1-11 0c0-3.3 2.5-6.4 5.5-10z"/></svg></span><h2>Reminders <small>water, posture, eyes, a walk</small></h2></summary>
   <p class="hint">Turn on the ones you want and set how often. They pause while you're away from the screen.</p>
   <ul id="rems" class="list"></ul>
   <form id="addRem" class="add">
@@ -230,8 +230,8 @@
   </form>
   </details>
 
-  <details class="sect desk">
-  <summary><h2>Focus lock <small>only your work apps during focus</small></h2></summary>
+  <details class="sect desk" name="sect">
+  <summary><span class="sico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg></span><h2>Focus lock <small>only your work apps during focus</small></h2></summary>
   <label class="chk"><input type="checkbox" id="lockOn"> Cover everything else during focus</label>
     <p class="hint">While focus runs, any app or tab that isn't on your list gets covered until you switch back. The taskbar and Start never lock, and the cover always lets you pause.</p>
   <label class="chk"><input type="checkbox" id="lockMeet"> Not during calendar meetings</label>
@@ -248,23 +248,25 @@
   <ul id="winList" class="list cals"></ul>
   </details>
 
-  <details class="sect">
-  <summary><h2>Calendars <small>Google, Outlook, or a file</small></h2></summary>
+  <details class="sect" name="sect">
+  <summary><span class="sico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span><h2>Calendars <small>Google, Outlook, or a file</small></h2></summary>
   <ul id="cals" class="list cals"></ul>
   <form id="addCal" class="calform">
     <input name="name" placeholder="Name, e.g. Work" required aria-label="Calendar name">
-    <input name="url" placeholder="Paste the calendar link" required spellcheck="false" aria-label="Calendar link">
+    <input name="url" placeholder="Calendar link, or email for a public one" required spellcheck="false" aria-label="Calendar link">
     <button class="soft small">Add calendar</button>
   </form>
   <p class="help"><button id="calImport" type="button" class="soft small">Import a file (.ics or .zip)</button><input type="file" id="calFile" accept=".ics,.zip,text/calendar,application/zip" multiple hidden></p>
   <details class="more"><summary>Where do I find the link?</summary>
   <div lang="en">
     <p class="help"><b>Link:</b> Google Calendar: Settings → your calendar → <i>Secret address in iCal format</i>. Outlook: Settings → Calendar → Shared calendars → Publish → ICS link.</p>
+    <p class="help"><b>Public calendar?</b> No secret needed: paste its public link, or just its address (name@gmail.com or the calendar ID). Many people and brands keep their meeting calendar public.</p>
     <p class="help"><b>No secret address?</b> Some work accounts hide it. Export instead: Google Calendar → Settings → Import &amp; export → Export, then import the .zip here as it is. A file doesn't update itself; import a newer export to refresh it.</p>
     <p class="help">Read-only; stays on this device.</p>
   </div>
   <div lang="tr">
     <p class="help"><b>Bağlantı:</b> Google Takvim: Ayarlar → takviminiz → <i>iCal biçimindeki gizli adres</i>. Outlook: Ayarlar → Takvim → Paylaşılan takvimler → Yayımla → ICS bağlantısı.</p>
+    <p class="help"><b>Herkese açık takvim mi?</b> Gizli adres gerekmez: herkese açık bağlantısını ya da sadece adresini (isim@gmail.com veya takvim kimliği) yapıştırın. Birçok kişi ve marka toplantı takvimini herkese açık tutar.</p>
     <p class="help"><b>Gizli adres yok mu?</b> Bazı iş hesapları bunu gizler. Bunun yerine dışa aktarın: Google Takvim → Ayarlar → İçe ve dışa aktar → Dışa aktar, sonra .zip dosyasını olduğu gibi buradan içe aktarın. Dosya kendini güncellemez; yenilemek için yeni bir dışa aktarmayı tekrar içe aktarın.</p>
     <p class="help">Salt okunur; bu cihazda kalır.</p>
   </div>
@@ -272,8 +274,8 @@
   <p class="help"><span id="calStatus" role="status"></span> <button id="calSync" type="button" class="soft small">Sync now</button></p>
   </details>
 
-  <details class="sect">
-  <summary><h2>Evening <small>night light, screen time, bedtime</small></h2></summary>
+  <details class="sect" name="sect">
+  <summary><span class="sico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18M7 18a5 5 0 0 1 10 0M12 6v3M5.5 10.5l1.5 1.5M18.5 10.5L17 12"/></svg></span><h2>Evening <small>night light, screen time, bedtime</small></h2></summary>
   <div class="grid">
     <div class="row"><label class="chk"><input type="checkbox" data-g="night"> Warm night light from</label><input type="time" data-g="nightAt" aria-label="Night light time"></div>
     <label class="desk wide"><span>Night light uses</span><select data-g="nightMode">
@@ -286,15 +288,16 @@
     <div class="row"><label class="chk"><input type="checkbox" data-g="screen"> Screen-time nudge after</label><span class="unit"><input type="number" min="15" data-g="screenLimit" aria-label="Screen-time nudge after, minutes"> min</span></div>
     <p class="hint">After this long at the screen without a break, a nudge to look away.</p>
     <div class="row desk"><label class="chk"><input type="checkbox" data-g="shutdown"> Shut down PC at</label><input type="time" data-g="shutdownAt" aria-label="Shutdown time"></div>
+    <p class="hint desk">A warning 5 minutes and 1 minute before, each with Cancel. Apps with unsaved work still ask to save first.</p>
     <label class="chk wide"><input type="checkbox" data-g="sleep"> Nudge me to sleep after bedtime</label>
   </div>
   </details>
 
-  <details class="sect desk">
-  <summary><h2>Sleep timer <small>the moon button</small></h2></summary>
+  <details class="sect desk" name="sect">
+  <summary><span class="sico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/><path d="M15 4h3l-3 3.5h3"/></svg></span><h2>Sleep timer <small>the moon button</small></h2></summary>
   <div class="grid">
     <label><span>After</span><span><input type="number" min="5" data-s="sleepMin" aria-label="Sleep timer length, minutes"> min</span></label>
-    <p class="hint">The moon button at the top starts it, for example for a movie. When it ends you always get 60 seconds to cancel.</p>
+    <p class="hint">The moon button at the top starts it, for example for a movie. You get a warning 5 minutes and 1 minute before, each with Cancel.</p>
     <label>Then <select data-s="sleepAction">
       <option value="sleep">Sleep the PC</option><option value="shutdown">Shut down the PC</option>
       <option value="lock">Lock the PC</option><option value="remind">Only remind me</option>
@@ -302,18 +305,18 @@
   </div>
   </details>
 
-  <details class="sect desk">
-  <summary><h2>Corner widget <small>where the small pill sits</small></h2></summary>
-  <p class="help">Minimize Lumina and a small pill shows the timer and what's next. Pick a corner, or put it on the taskbar so it never covers your work. You can also drag it there.</p>
+  <details class="sect desk" name="sect">
+  <summary><span class="sico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><rect x="11" y="13" width="7" height="3" rx="1.5"/></svg></span><h2>Corner widget <small>where the small pill sits</small></h2></summary>
+  <p class="help">Minimize Lumina and a small pill shows the timer and what's next. Pick a spot, or put it on the taskbar so it never covers your work. Dragged, it snaps to these spots; pushed against the left or right edge it shrinks to a small square with the minutes.</p>
   <div id="pipPick" class="pippick" role="group" aria-label="Corner widget position">
-    <button type="button" data-pip="tl" aria-label="Top left"></button><button type="button" data-pip="tr" aria-label="Top right"></button>
-    <button type="button" data-pip="bl" aria-label="Bottom left"></button><button type="button" data-pip="br" aria-label="Bottom right"></button>
+    <button type="button" data-pip="tl" aria-label="Top left"></button><button type="button" data-pip="tc" aria-label="Top middle"></button><button type="button" data-pip="tr" aria-label="Top right"></button>
+    <button type="button" data-pip="bl" aria-label="Bottom left"></button><button type="button" data-pip="bc" aria-label="Bottom middle"></button><button type="button" data-pip="br" aria-label="Bottom right"></button>
     <button type="button" data-pip="taskbar" class="tb">Taskbar</button>
   </div>
   </details>
 
-  <details class="sect">
-  <summary><h2>App <small>alerts, sound, theme, language</small></h2></summary>
+  <details class="sect" name="sect">
+  <summary><span class="sico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></span><h2>App <small>alerts, sound, theme, language</small></h2></summary>
   <div class="grid">
     <label>Alerts <select data-s="alert"><option value="popup">Pop-up + sound</option><option value="sound">Sound only</option></select></label>
     <label class="chk"><input type="checkbox" data-s="sound"> Sounds <button id="testAlert" type="button" class="soft small">Test</button></label>
@@ -323,9 +326,18 @@
     <label>Language <select id="lang"><option value="auto">Automatic</option><option value="en">English</option><option value="tr">Türkçe</option></select></label>
   </div>
   </details>
-  <p class="help"><button id="openIntro" type="button" class="soft small">About Lumina</button></p>
-
   <button id="closeSettings" class="primary">Back</button>
+
+  <footer class="sfoot">
+    <p id="upd" class="upd" hidden><span id="updText"></span><button type="button" data-link="https://github.com/Red-Olive-Studio/lumina-focus/releases/latest" class="primary-sm">Download</button></p>
+    <nav class="slinks" aria-label="About Lumina">
+      <button type="button" data-link="https://github.com/Red-Olive-Studio/lumina-focus" title="Lumina on GitHub"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.3-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5a3.9 3.9 0 0 1 1-2.7c-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7a3.9 3.9 0 0 1 1 2.7c0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.8V21c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></svg>GitHub</button>
+      <button type="button" data-link="https://github.com/Red-Olive-Studio/lumina-focus/releases" title="All versions and what changed">Updates</button>
+      <button type="button" data-link="https://github.com/Red-Olive-Studio" title="Red Olive Studio on GitHub">Developer</button>
+      <button type="button" id="openIntro">About Lumina</button>
+    </nav>
+    <p id="ver" class="ver" hidden></p>
+  </footer>
 </main>
 
 <aside id="testPanel" class="testpanel" hidden aria-label="Test mode">

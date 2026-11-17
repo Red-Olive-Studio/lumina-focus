@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hm, since, inWindow, nextPhase, fmt, parseAdd, parseWhen, streak, dayLabel, dur, until, calEvents, byDay, joinLink, icsUrl, hhmm, resizeMeals, allowedWin, pruneIcs, unzip, gcalLink, normTime, soon } from '../web/logic.js';
+import { hm, since, inWindow, nextPhase, fmt, parseAdd, parseWhen, streak, dayLabel, dur, until, calEvents, byDay, joinLink, icsUrl, hhmm, resizeMeals, allowedWin, pruneIcs, unzip, gcalLink, normTime, soon, newer } from '../web/logic.js';
 
 test('day window wraps past midnight', () => {
   assert.equal(since(hm('00:10'), hm('23:30')), 40);
@@ -156,6 +156,8 @@ test('calendar: join links, location, free time, pasted page links', () => {
   assert.equal(icsUrl('https://calendar.google.com/calendar/embed?src=abc%40group.calendar.google.com'), 'https://calendar.google.com/calendar/ical/abc%40group.calendar.google.com/public/basic.ics');
   assert.equal(icsUrl('https://outlook.office365.com/owa/calendar/a@b.com/x/calendar.html'), 'https://outlook.office365.com/owa/calendar/a@b.com/x/calendar.ics');
   assert.equal(icsUrl(' webcal://x.com/a.ics '), 'https://x.com/a.ics');
+  assert.equal(icsUrl(' ceo@company.com '), 'https://calendar.google.com/calendar/ical/ceo%40company.com/public/basic.ics'); // public calendar by its ID
+  assert.equal(icsUrl('https://x.com/a@b.ics'), 'https://x.com/a@b.ics'); // a link with @ stays a link
   assert.equal(icsUrl('https://calendar.google.com/calendar/u/0?cid=%%%'), 'https://calendar.google.com/calendar/u/0?cid=%%%'); // bad cid: left alone
 });
 
@@ -257,8 +259,15 @@ test('soon: the widget\'s short countdown', () => {
 
 test('translate: emoji reminders, and names inside a sentence are only looked up', async () => {
   const { translate } = await import('../web/i18n.js');
-  assert.equal(translate('💧 Drink water', 'tr'), '💧 Su için');
+  assert.equal(translate('💧 Drink water', 'tr'), '💧 Su iç');
   assert.equal(translate('Lunch is done', 'tr'), 'Öğle yemeği bitti');
   assert.equal(translate('Tea in 5m is done', 'tr'), 'Tea in 5 dk bitti'); // "in 5m" inside a name is not turned into "5 dk sonra"
   assert.equal(translate('Drink water', 'en'), 'Drink water');
+});
+
+test('newer: version compare for the update notice', () => {
+  assert.equal(newer('0.10.0', '0.9.1'), true);
+  assert.equal(newer('0.9.1', '0.9.1'), false);
+  assert.equal(newer('0.8.1', '0.9.1'), false);
+  assert.equal(newer('1.0', '0.9.9'), true);
 });
